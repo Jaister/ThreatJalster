@@ -8,8 +8,15 @@ import type { ThreatNode } from "../../types/workspace";
 import styles from "./EvidenceNode.module.css";
 
 const SUPPORTED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+const SEVERITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
 
 const isImageType = (mimeType: string): boolean => mimeType.startsWith("image/");
+
+const parseTags = (raw: string): string[] =>
+  raw
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
 
 const getImageFiles = (files: FileList | File[]): File[] =>
   Array.from(files).filter((file) => isImageType(file.type));
@@ -93,12 +100,15 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   const isBusy = useWorkspaceStore((state) => state.isBusy);
   const setSelectedNodeId = useWorkspaceStore((state) => state.setSelectedNodeId);
   const setNodeMode = useWorkspaceStore((state) => state.setNodeMode);
-  const updateNodeMarkdown = useWorkspaceStore((state) => state.updateNodeMarkdown);
+  const updateNodeTextFields = useWorkspaceStore((state) => state.updateNodeTextFields);
   const attachEvidenceToNode = useWorkspaceStore((state) => state.attachEvidenceToNode);
   const removeEvidenceFromNode = useWorkspaceStore((state) => state.removeEvidenceFromNode);
   const enqueueToast = useWorkspaceStore((state) => state.enqueueToast);
 
   const mode = data.mode === "edit" ? "edit" : "view";
+  const snippetLanguage = data.payload.snippet?.language ?? "text";
+  const snippetContent = data.payload.snippet?.content ?? "";
+  const tagsText = data.payload.tags.join(", ");
 
   const imageUrls = useMemo(
     () =>
@@ -145,7 +155,34 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   };
 
   const onEditorChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    updateNodeMarkdown(id, event.target.value);
+    updateNodeTextFields(id, { markdown: event.target.value });
+  };
+
+  const onTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { title: event.target.value });
+  };
+
+  const onTagsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { tags: parseTags(event.target.value) });
+  };
+
+  const onSeverityChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    if (!SEVERITY_OPTIONS.includes(value as (typeof SEVERITY_OPTIONS)[number])) {
+      return;
+    }
+
+    updateNodeTextFields(id, {
+      severity: value as (typeof SEVERITY_OPTIONS)[number]
+    });
+  };
+
+  const onSnippetLanguageChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { snippetLanguage: event.target.value });
+  };
+
+  const onSnippetContentChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    updateNodeTextFields(id, { snippetContent: event.target.value });
   };
 
   const onNodeDoubleClick = () => {
@@ -207,7 +244,18 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
 
       <header className={styles.header}>
         <div>
-          <h4 className={styles.title}>{data.title}</h4>
+          {mode === "edit" ? (
+            <input
+              className={`${styles.titleInput} nodrag`}
+              value={data.title}
+              onChange={onTitleChange}
+              onPaste={onPaste}
+              placeholder="Node title"
+              aria-label="Node title"
+            />
+          ) : (
+            <h4 className={styles.title}>{data.title}</h4>
+          )}
           <div className={styles.meta}>Double click to switch mode</div>
         </div>
         <button type="button" className={styles.modeButton} onClick={onToggleMode}>
@@ -217,18 +265,88 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
 
       <section className={`${styles.body} ${mode === "edit" ? "nodrag" : ""}`}>
         {mode === "edit" ? (
-          <textarea
-            className={`${styles.editor} nodrag`}
-            value={data.payload.markdown}
-            onChange={onEditorChange}
-            onPaste={onPaste}
-            placeholder="Write markdown notes"
-            aria-label="Evidence markdown editor"
-          />
+          <>
+            <label className={styles.fieldLabel}>
+              Markdown
+              <textarea
+                className={`${styles.editor} nodrag`}
+                value={data.payload.markdown}
+                onChange={onEditorChange}
+                onPaste={onPaste}
+                placeholder="Write markdown notes"
+                aria-label="Evidence markdown editor"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Tags (comma separated)
+              <input
+                className={`${styles.textInput} nodrag`}
+                value={tagsText}
+                onChange={onTagsChange}
+                onPaste={onPaste}
+                placeholder="phishing, lateral-movement"
+                aria-label="Node tags"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Severity
+              <select
+                className={`${styles.selectInput} nodrag`}
+                value={data.payload.severity}
+                onChange={onSeverityChange}
+                aria-label="Node severity"
+              >
+                {SEVERITY_OPTIONS.map((severity) => (
+                  <option key={severity} value={severity}>
+                    {severity}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Snippet language
+              <input
+                className={`${styles.textInput} nodrag`}
+                value={snippetLanguage}
+                onChange={onSnippetLanguageChange}
+                onPaste={onPaste}
+                placeholder="powershell"
+                aria-label="Snippet language"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Snippet content
+              <textarea
+                className={`${styles.editor} ${styles.snippetEditor} nodrag`}
+                value={snippetContent}
+                onChange={onSnippetContentChange}
+                onPaste={onPaste}
+                placeholder="Add command or log snippet here"
+                aria-label="Snippet content"
+              />
+            </label>
+          </>
         ) : (
-          <article className={styles.markdownView}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.payload.markdown}</ReactMarkdown>
-          </article>
+          <>
+            <article className={styles.markdownView}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.payload.markdown}</ReactMarkdown>
+            </article>
+
+            <div className={styles.metaChips}>
+              <span className={styles.metaChip}>Severity: {data.payload.severity}</span>
+            </div>
+
+            {snippetContent ? (
+              <div className={styles.snippetBlock}>
+                <div className={styles.snippetMeta}>{snippetLanguage || "text"}</div>
+                <pre className={styles.snippetContent}>{snippetContent}</pre>
+              </div>
+            ) : null}
+          </>
         )}
 
         <div className={`${styles.dropzone} nodrag ${isDropActive ? styles.dropzoneActive : ""}`}>
@@ -257,7 +375,9 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         ) : null}
       </section>
 
-      <footer className={styles.footer}>{data.payload.tags.join(" | ")}</footer>
+      <footer className={styles.footer}>
+        {data.payload.tags.length > 0 ? data.payload.tags.join(" | ") : "no tags"}
+      </footer>
 
       <Handle type="source" position={Position.Right} />
     </div>

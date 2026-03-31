@@ -10,7 +10,8 @@ export const App = () => {
   const [activeTab, setActiveTab] = useState<AppTab>("canvas");
   const [inputId, setInputId] = useState("demo-investigation");
   const setInvestigationId = useWorkspaceStore((state) => state.setInvestigationId);
-  const saveCurrentWorkspace = useWorkspaceStore((state) => state.saveCurrentWorkspace);
+  const saveWorkspace = useWorkspaceStore((state) => state.saveWorkspace);
+  const saveWorkspaceAs = useWorkspaceStore((state) => state.saveWorkspaceAs);
   const loadProjectFromDialog = useWorkspaceStore((state) => state.loadProjectFromDialog);
   const addNode = useWorkspaceStore((state) => state.addNode);
   const isBusy = useWorkspaceStore((state) => state.isBusy);
@@ -40,8 +41,11 @@ export const App = () => {
           <button type="button" disabled={isBusy} onClick={() => loadProjectFromDialog()}>
             Open Project
           </button>
-          <button type="button" disabled={isBusy} onClick={() => saveCurrentWorkspace()}>
-            Save Project
+          <button type="button" disabled={isBusy} onClick={() => saveWorkspace()}>
+            Guardar
+          </button>
+          <button type="button" disabled={isBusy} onClick={() => saveWorkspaceAs()}>
+            Guardar como
           </button>
           <button type="button" disabled={isBusy} onClick={() => addNode()}>
             Add Node
@@ -84,10 +88,11 @@ export const App = () => {
               <li>Use Open Project to pick a workspace.json file from disk.</li>
               <li>Use Add Node to create a new evidence card on the canvas.</li>
               <li>Double click a node to switch between view mode and edit mode.</li>
+              <li>Edit title, markdown, tags, snippet language/content and severity in node edit mode.</li>
               <li>Drag image files onto a node or focus it and press Ctrl+V to paste images.</li>
               <li>Use the x button on each thumbnail to remove attached evidence.</li>
               <li>Drag from one node handle to another to create a straight relationship edge.</li>
-              <li>Use Save Project to persist your graph, notes and evidence references.</li>
+              <li>Use Guardar to save quickly and Guardar como to choose a new file path.</li>
             </ol>
           </section>
         )}

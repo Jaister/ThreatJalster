@@ -12,6 +12,7 @@ import { loadProject, saveProject, toAssetUrl } from "../lib/tauri";
 import type {
   EvidenceImageMeta,
   NodeMode,
+  Severity,
   ThreatEdge,
   ThreatNode,
   WorkspaceDocument
@@ -22,6 +23,15 @@ type EvidenceMime = EvidenceImageMeta["mimeType"];
 interface ToastMessage {
   id: string;
   text: string;
+}
+
+interface NodeTextUpdates {
+  title?: string;
+  markdown?: string;
+  tags?: string[];
+  snippetLanguage?: string;
+  snippetContent?: string;
+  severity?: Severity;
 }
 
 interface WorkspaceState {
@@ -41,7 +51,7 @@ interface WorkspaceState {
   addNode: (position?: XYPosition) => void;
   setSelectedNodeId: (nodeId?: string) => void;
   setNodeMode: (nodeId: string, mode: NodeMode) => void;
-  updateNodeMarkdown: (nodeId: string, markdown: string) => void;
+  updateNodeTextFields: (nodeId: string, updates: NodeTextUpdates) => void;
   attachEvidenceToNode: (params: {
     nodeId: string;
     originalFileName: string;
@@ -56,11 +66,25 @@ interface WorkspaceState {
   enqueueToast: (text: string) => void;
   dismissToast: (toastId: string) => void;
   setInvestigationId: (id: string) => void;
-  saveCurrentWorkspace: () => Promise<void>;
+  saveWorkspace: () => Promise<void>;
+  saveWorkspaceAs: () => Promise<void>;
   loadProjectFromDialog: () => Promise<void>;
 }
 
 const now = () => new Date().toISOString();
+
+const buildWorkspaceDocument = (state: WorkspaceState): WorkspaceDocument => ({
+  version: 1,
+  meta: {
+    investigationId: state.investigationId,
+    name: "Threat Investigation",
+    createdAt: now(),
+    updatedAt: now()
+  },
+  nodes: state.nodes,
+  edges: state.edges,
+  evidence: state.evidence
+});
 
 const createNodePayload = (index: number) => ({
   title: `Intel Node ${index}`,
@@ -325,21 +349,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  updateNodeMarkdown: (nodeId, markdown) => {
+  updateNodeTextFields: (nodeId, updates) => {
     set((state) => ({
       nodes: state.nodes.map((node) => {
         if (node.id !== nodeId) {
           return node;
         }
 
+        const existingSnippet = node.data.payload.snippet ?? {
+          language: "text",
+          content: ""
+        };
+
         return {
           ...node,
           data: {
             ...node.data,
+            title: updates.title ?? node.data.title,
             updatedAt: now(),
             payload: {
               ...node.data.payload,
-              markdown
+              markdown: updates.markdown ?? node.data.payload.markdown,
+              tags: updates.tags ?? node.data.payload.tags,
+              severity: updates.severity ?? node.data.payload.severity,
+              snippet: {
+                language: updates.snippetLanguage ?? existingSnippet.language,
+                content: updates.snippetContent ?? existingSnippet.content
+              }
             }
           }
         };
@@ -444,27 +480,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ investigationId: id.trim() || "demo-investigation" });
   },
 
-  saveCurrentWorkspace: async () => {
+  saveWorkspace: async () => {
     const state = get();
     set({ isBusy: true, error: undefined });
 
     try {
-      const workspace: WorkspaceDocument = {
-        version: 1,
-        meta: {
-          investigationId: state.investigationId,
-          name: "Threat Investigation",
-          createdAt: now(),
-          updatedAt: now()
-        },
-        nodes: state.nodes,
-        edges: state.edges,
-        evidence: state.evidence
-      };
+      const workspace = buildWorkspaceDocument(state);
+      const shouldAskPath = !state.projectDir;
+      const result = await saveProject(workspace, state.projectDir, shouldAskPath);
 
-      const result = await saveProject(workspace, state.projectDir, true);
       set({ isBusy: false, projectDir: result.projectDir });
       get().enqueueToast(`Project saved: ${result.workspacePath}`);
+    } catch (error) {
+      set({
+        isBusy: false,
+        error: error instanceof Error ? error.message : "Failed to save project"
+      });
+    }
+  },
+
+  saveWorkspaceAs: async () => {
+    const state = get();
+    set({ isBusy: true, error: undefined });
+
+    try {
+      const workspace = buildWorkspaceDocument(state);
+      const result = await saveProject(workspace, state.projectDir, true);
+
+      set({ isBusy: false, projectDir: result.projectDir });
+      get().enqueueToast(`Project saved as: ${result.workspacePath}`);
     } catch (error) {
       set({
         isBusy: false,
