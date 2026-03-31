@@ -1,0 +1,158 @@
+.node {
+  width: 340px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  color: var(--color-text);
+}
+
+.nodeSelected {
+  border-color: var(--color-text);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.modeButton {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: var(--radius-control);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.modeButton:hover {
+  border-color: var(--color-text);
+}
+
+.body {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.markdownView {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.markdownView :global(p) {
+  margin: 0 0 8px;
+}
+
+.markdownView :global(h1),
+.markdownView :global(h2),
+.markdownView :global(h3),
+.markdownView :global(h4) {
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+
+.markdownView :global(code) {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+}
+
+.editor {
+  resize: vertical;
+  min-height: 96px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.editor:focus-visible {
+  outline: 1px solid var(--color-text);
+}
+
+.dropzone {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.dropzoneActive {
+  border-color: var(--color-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.imageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.imageCard {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.image {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+  display: block;
+}
+
+.removeImageButton {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.removeImageButton:hover {
+  border-color: var(--color-text);
+}
+
+.footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

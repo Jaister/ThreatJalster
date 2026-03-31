@@ -1,0 +1,48 @@
+{
+  "$schema": "./gen/schemas/tauri-config-v2.json",
+  "productName": "ThreatJalster",
+  "version": "0.1.0",
+  "identifier": "com.security.threatjalster",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "ThreatJalster",
+        "label": "main",
+        "width": 1280,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPLOCALDATA/evidences/**",
+          "$APPLOCALDATA/projects/**",
+          "$APPLOCALDATA/**",
+          "$APPDATA/**",
+          "$LOCALDATA/**"
+        ]
+      },
+      "capabilities": [
+        "default"
+      ],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: tauri: http://asset.localhost https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost http://asset.localhost https://asset.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}
