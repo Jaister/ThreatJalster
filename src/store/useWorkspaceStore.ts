@@ -42,6 +42,7 @@ interface WorkspaceState {
   selectedNodeId?: string;
   investigationId: string;
   projectDir?: string;
+  workspacePath?: string;
   isBusy: boolean;
   error?: string;
   toasts: ToastMessage[];
@@ -239,6 +240,7 @@ const demo = createDemoWorkspace();
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   investigationId: demo.meta.investigationId,
   projectDir: undefined,
+  workspacePath: undefined,
   nodes: demo.nodes,
   edges: demo.edges,
   evidence: demo.evidence,
@@ -482,16 +484,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   saveWorkspace: async () => {
     const state = get();
+    const shouldAskPath = !state.workspacePath;
+    console.debug("[save] saveWorkspace called, workspacePath=%s projectDir=%s shouldAskPath=%s", state.workspacePath ?? "undefined", state.projectDir ?? "undefined", shouldAskPath);
     set({ isBusy: true, error: undefined });
 
     try {
       const workspace = buildWorkspaceDocument(state);
-      const shouldAskPath = !state.projectDir;
-      const result = await saveProject(workspace, state.projectDir, shouldAskPath);
+      console.debug("[save] nodes=%d, edges=%d, evidence=%d", workspace.nodes.length, workspace.edges.length, Object.keys(workspace.evidence).length);
+      const result = await saveProject(workspace, state.workspacePath ?? state.projectDir, shouldAskPath);
+      console.debug("[save] success -> projectDir=%s workspacePath=%s", result.projectDir, result.workspacePath);
 
-      set({ isBusy: false, projectDir: result.projectDir });
+      set({ isBusy: false, projectDir: result.projectDir, workspacePath: result.workspacePath });
       get().enqueueToast(`Project saved: ${result.workspacePath}`);
     } catch (error) {
+      console.debug("[save] error: %o", error);
       set({
         isBusy: false,
         error: error instanceof Error ? error.message : "Failed to save project"
@@ -501,15 +507,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   saveWorkspaceAs: async () => {
     const state = get();
+    console.debug("[save] saveWorkspaceAs called, projectDir=%s", state.projectDir ?? "undefined");
     set({ isBusy: true, error: undefined });
 
     try {
       const workspace = buildWorkspaceDocument(state);
+      console.debug("[save] askPath=true, nodes=%d, edges=%d, evidence=%d", workspace.nodes.length, workspace.edges.length, Object.keys(workspace.evidence).length);
       const result = await saveProject(workspace, state.projectDir, true);
+      console.debug("[save] success -> projectDir=%s workspacePath=%s", result.projectDir, result.workspacePath);
 
-      set({ isBusy: false, projectDir: result.projectDir });
+      set({ isBusy: false, projectDir: result.projectDir, workspacePath: result.workspacePath });
       get().enqueueToast(`Project saved as: ${result.workspacePath}`);
     } catch (error) {
+      console.debug("[save] error: %o", error);
       set({
         isBusy: false,
         error: error instanceof Error ? error.message : "Failed to save project"
@@ -527,6 +537,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({
         investigationId: workspace.meta.investigationId,
         projectDir: result.projectDir,
+        workspacePath: result.workspacePath,
         nodes: workspace.nodes,
         edges: workspace.edges,
         evidence: workspace.evidence,

@@ -6,6 +6,10 @@
   color: var(--color-text);
 }
 
+.node:hover {
+  border-color: var(--color-border-strong);
+}
+
 .nodeSelected {
   border-color: var(--color-text);
 }

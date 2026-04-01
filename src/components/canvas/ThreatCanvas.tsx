@@ -94,7 +94,7 @@ export const ThreatCanvas = () => {
       type: "straight",
       animated: false,
       style: {
-        strokeWidth: 1.5,
+        strokeWidth: 2.5,
         stroke: "rgba(255, 255, 255, 0.78)"
       }
     }),

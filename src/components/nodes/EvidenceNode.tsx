@@ -2,7 +2,7 @@ import { useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEven
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { saveEvidenceFile, toAssetUrl } from "../../lib/tauri";
+import { readClipboardImage, saveEvidenceFile, toAssetUrl } from "../../lib/tauri";
 import { useWorkspaceStore } from "../../store";
 import type { ThreatNode } from "../../types/workspace";
 import styles from "./EvidenceNode.module.css";
@@ -25,6 +25,7 @@ const getPastedImageFiles = (event: ClipboardEvent<HTMLElement>): File[] => {
   const itemFiles: File[] = [];
 
   for (const item of Array.from(event.clipboardData.items)) {
+    console.debug("[evidence:paste] item kind=%s type=%s", item.kind, item.type);
     if (item.kind !== "file" || !isImageType(item.type)) {
       continue;
     }
@@ -35,6 +36,8 @@ const getPastedImageFiles = (event: ClipboardEvent<HTMLElement>): File[] => {
     }
   }
 
+  console.debug("[evidence:paste] matched %d item-files, fallback files=%d", itemFiles.length, event.clipboardData.files.length);
+
   if (itemFiles.length > 0) {
     return itemFiles;
   }
@@ -43,27 +46,32 @@ const getPastedImageFiles = (event: ClipboardEvent<HTMLElement>): File[] => {
 };
 
 const readClipboardApiImages = async (): Promise<File[]> => {
+  console.debug("[evidence:clipboardApi] navigator.clipboard.read available=%s", Boolean(navigator.clipboard?.read));
   if (!navigator.clipboard?.read) {
     return [];
   }
 
   try {
     const clipboardItems = await navigator.clipboard.read();
+    console.debug("[evidence:clipboardApi] got %d clipboard items", clipboardItems.length);
     const files: File[] = [];
 
     for (const [index, clipboardItem] of clipboardItems.entries()) {
+      console.debug("[evidence:clipboardApi] item[%d] types=%s", index, clipboardItem.types.join(", "));
       for (const mimeType of clipboardItem.types) {
         if (!isImageType(mimeType)) {
           continue;
         }
 
         const blob = await clipboardItem.getType(mimeType);
+        console.debug("[evidence:clipboardApi] got blob type=%s size=%d", mimeType, blob.size);
         files.push(new File([blob], `clipboard-${Date.now()}-${index}.${mimeToExtension(mimeType)}`, { type: mimeType }));
       }
     }
 
     return files;
-  } catch {
+  } catch (err) {
+    console.debug("[evidence:clipboardApi] error: %o", err);
     return [];
   }
 };
@@ -119,6 +127,7 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   );
 
   const attachFiles = async (files: File[]): Promise<void> => {
+    console.debug("[evidence:attach] called with %d file(s)", files.length);
     if (files.length === 0) {
       return;
     }
@@ -127,20 +136,27 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
 
     try {
       for (const [index, file] of files.entries()) {
+        console.debug("[evidence:attach] file[%d] name=%s type=%s size=%d", index, file.name, file.type, file.size);
         if (!isImageType(file.type)) {
+          console.debug("[evidence:attach] skipped (not image type)");
           continue;
         }
 
         const originalName = resolveUploadName(file, index);
         const bytes = new Uint8Array(await file.arrayBuffer());
+        console.debug("[evidence:attach] saving %d bytes as %s", bytes.length, originalName);
         const storagePath = await saveEvidenceFile(bytes, originalName);
+        console.debug("[evidence:attach] saved -> storagePath=%s", storagePath);
+
+        const previewSrc = toAssetUrl(storagePath);
+        console.debug("[evidence:attach] assetUrl=%s", previewSrc);
 
         attachEvidenceToNode({
           nodeId: id,
           originalFileName: originalName,
           mimeType: SUPPORTED_IMAGE_MIME.has(file.type) ? file.type : "image/png",
           storagePath,
-          previewSrc: toAssetUrl(storagePath)
+          previewSrc
         });
 
         enqueueToast(`Saved evidence image: ${storagePath}`);
@@ -193,6 +209,8 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
     event.preventDefault();
     setIsDropActive(false);
     setSelectedNodeId(id);
+    const allFiles = Array.from(event.dataTransfer.files);
+    console.debug("[evidence:drop] %d file(s): %s", allFiles.length, allFiles.map((f) => `${f.name} (${f.type})`).join(", "));
     void attachFiles(getImageFiles(event.dataTransfer.files));
   };
 
@@ -206,22 +224,55 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
     setIsDropActive(false);
   };
 
+  const attachClipboardImageFromRust = async (): Promise<boolean> => {
+    console.debug("[evidence:rustClipboard] reading clipboard via Rust backend");
+    try {
+      const storagePath = await readClipboardImage();
+      console.debug("[evidence:rustClipboard] result=%s", storagePath ?? "null (no image)");
+      if (!storagePath) {
+        return false;
+      }
+
+      setSelectedNodeId(id);
+      const previewSrc = toAssetUrl(storagePath);
+      console.debug("[evidence:rustClipboard] assetUrl=%s", previewSrc);
+      attachEvidenceToNode({
+        nodeId: id,
+        originalFileName: "clipboard.png",
+        mimeType: "image/png",
+        storagePath,
+        previewSrc
+      });
+      enqueueToast(`Saved clipboard image: ${storagePath}`);
+      return true;
+    } catch (err) {
+      console.debug("[evidence:rustClipboard] error: %o", err);
+      return false;
+    }
+  };
+
   const onPaste = (event: ClipboardEvent<HTMLElement>) => {
+    console.debug("[evidence:onPaste] items=%d files=%d", event.clipboardData.items.length, event.clipboardData.files.length);
     const files = getPastedImageFiles(event);
     if (files.length === 0) {
+      console.debug("[evidence:onPaste] no direct files, trying clipboard API then Rust fallback");
       void (async () => {
         const clipboardApiFiles = await readClipboardApiImages();
-        if (clipboardApiFiles.length === 0) {
+        if (clipboardApiFiles.length > 0) {
+          console.debug("[evidence:onPaste] clipboard API returned %d file(s)", clipboardApiFiles.length);
+          setSelectedNodeId(id);
+          void attachFiles(clipboardApiFiles);
           return;
         }
 
-        setSelectedNodeId(id);
-        void attachFiles(clipboardApiFiles);
+        console.debug("[evidence:onPaste] clipboard API empty, trying Rust backend");
+        await attachClipboardImageFromRust();
       })();
 
       return;
     }
 
+    console.debug("[evidence:onPaste] got %d direct file(s)", files.length);
     event.preventDefault();
     setSelectedNodeId(id);
     void attachFiles(files);
@@ -246,7 +297,7 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         <div>
           {mode === "edit" ? (
             <input
-              className={`${styles.titleInput} nodrag`}
+              className={`${styles.titleInput} nodrag nopan nowheel`}
               value={data.title}
               onChange={onTitleChange}
               onPaste={onPaste}
@@ -263,7 +314,7 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         </button>
       </header>
 
-      <section className={`${styles.body} ${mode === "edit" ? "nodrag" : ""}`}>
+      <section className={`${styles.body} ${mode === "edit" ? "nodrag nopan nowheel" : ""}`}>
         {mode === "edit" ? (
           <>
             <label className={styles.fieldLabel}>

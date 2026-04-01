@@ -9,7 +9,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::save_evidence_file,
             commands::save_project,
-            commands::load_project
+            commands::load_project,
+            commands::read_clipboard_image
         ])
         .run(tauri::generate_context!())
         .expect("failed to run tauri application");
