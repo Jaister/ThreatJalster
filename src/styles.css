@@ -35,8 +35,8 @@ body,
 }
 
 .app-shell {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 
@@ -72,7 +72,8 @@ body,
 
 .actions input,
 .actions button,
-.app-tabs button {
+.findbar input,
+.findbar button {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-surface);
@@ -81,26 +82,51 @@ body,
 }
 
 .actions button,
-.app-tabs button {
+.findbar button {
   cursor: pointer;
 }
 
 .actions button:hover,
-.app-tabs button:hover {
+.findbar button:hover {
   border-color: var(--color-border-strong);
 }
 
 .actions button:active,
-.app-tabs button:active {
+.findbar button:active {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .actions input:focus-visible,
 .actions button:focus-visible,
-.app-tabs button:focus-visible,
+.findbar input:focus-visible,
+.findbar button:focus-visible,
 .canvas-zoom-bar input:focus-visible {
   outline: 1px solid var(--color-border-strong);
   box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.findbar {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 480px) auto auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.findbar label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.findbar output {
+  min-width: 58px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 button:disabled {
@@ -116,21 +142,8 @@ button:disabled {
   color: var(--color-text);
 }
 
-.app-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-}
-
-.app-tabs button.is-active {
-  background: #ffffff;
-  color: #404040;
-  border-color: #ffffff;
-}
-
 .canvas-wrap {
+  flex: 1;
   position: relative;
   min-height: 0;
 }
@@ -157,30 +170,6 @@ button:disabled {
   word-break: break-all;
 }
 
-.instructions-panel {
-  width: min(860px, calc(100% - 32px));
-  margin: 16px auto;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-}
-
-.instructions-panel h2 {
-  margin: 0 0 10px;
-  font-size: 15px;
-}
-
-.instructions-panel ol {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 8px;
-  color: var(--color-text-muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
 .react-flow__handle {
   width: 10px;
   height: 10px;
@@ -199,7 +188,7 @@ button:disabled {
 .canvas-minimap {
   width: 220px;
   height: 150px;
-  margin: 0 16px 70px 0;
+  margin: 0 8px 8px 0;
   border: 1px solid var(--color-border-strong);
   border-radius: 0;
   background: #404040;
@@ -324,6 +313,22 @@ button:disabled {
     min-width: 120px;
   }
 
+  .findbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .findbar label {
+    grid-column: 1 / -1;
+  }
+
+  .findbar input {
+    grid-column: 1 / -1;
+  }
+
+  .findbar output {
+    text-align: left;
+  }
+
   .canvas-zoom-bar {
     min-width: 0;
     width: min(90vw, 340px);
@@ -337,6 +342,6 @@ button:disabled {
   .canvas-minimap {
     width: 190px;
     height: 130px;
-    margin: 0 10px 122px 0;
+    margin: 0 8px 8px 0;
   }
 }

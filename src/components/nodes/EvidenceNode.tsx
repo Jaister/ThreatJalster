@@ -1,4 +1,15 @@
-import { useMemo, useState, type ChangeEvent, type ClipboardEvent, type DragEvent } from "react";
+import {
+  Fragment,
+  cloneElement,
+  isValidElement,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactElement,
+  type ReactNode
+} from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -101,22 +112,149 @@ const resolveUploadName = (file: File, index: number): string => {
   return `clipboard-${Date.now()}-${index}.${mimeToExtension(file.type)}`;
 };
 
+const highlightText = (text: string, query: string, isActive: boolean): ReactNode => {
+  if (!query) {
+    return text;
+  }
+
+  const lowerText = text.toLocaleLowerCase();
+  const lowerQuery = query.toLocaleLowerCase();
+  const parts: ReactNode[] = [];
+
+  let cursor = 0;
+  let token = 0;
+
+  while (cursor < text.length) {
+    const foundAt = lowerText.indexOf(lowerQuery, cursor);
+    if (foundAt === -1) {
+      parts.push(text.slice(cursor));
+      break;
+    }
+
+    if (foundAt > cursor) {
+      parts.push(text.slice(cursor, foundAt));
+    }
+
+    const hit = text.slice(foundAt, foundAt + query.length);
+    parts.push(
+      <mark
+        key={`hit-${foundAt}-${token}`}
+        className={`${styles.searchHighlight} ${isActive ? styles.searchHighlightActive : ""}`}
+      >
+        {hit}
+      </mark>
+    );
+
+    token += 1;
+    cursor = foundAt + query.length;
+  }
+
+  if (parts.length === 0) {
+    return text;
+  }
+
+  return parts.map((part, index) => <Fragment key={`part-${index}`}>{part}</Fragment>);
+};
+
+const highlightChildren = (node: ReactNode, query: string, isActive: boolean): ReactNode => {
+  if (!query) {
+    return node;
+  }
+
+  if (typeof node === "string") {
+    return highlightText(node, query, isActive);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((child, index) => (
+      <Fragment key={`child-${index}`}>{highlightChildren(child, query, isActive)}</Fragment>
+    ));
+  }
+
+  if (isValidElement(node)) {
+    const element = node as ReactElement<{ children?: ReactNode }>;
+    return cloneElement(
+      element,
+      { ...element.props },
+      highlightChildren(element.props.children, query, isActive)
+    );
+  }
+
+  return node;
+};
+
 export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   const [isDropActive, setIsDropActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const evidencePreviewData = useWorkspaceStore((state) => state.evidencePreviewData);
+  const searchTerm = useWorkspaceStore((state) => state.searchTerm);
+  const activeSearchNodeId = useWorkspaceStore((state) => state.activeSearchNodeId);
   const isBusy = useWorkspaceStore((state) => state.isBusy);
   const setSelectedNodeId = useWorkspaceStore((state) => state.setSelectedNodeId);
   const setNodeMode = useWorkspaceStore((state) => state.setNodeMode);
   const updateNodeTextFields = useWorkspaceStore((state) => state.updateNodeTextFields);
   const attachEvidenceToNode = useWorkspaceStore((state) => state.attachEvidenceToNode);
   const removeEvidenceFromNode = useWorkspaceStore((state) => state.removeEvidenceFromNode);
+  const openImagePreview = useWorkspaceStore((state) => state.openImagePreview);
   const enqueueToast = useWorkspaceStore((state) => state.enqueueToast);
 
   const mode = data.mode === "edit" ? "edit" : "view";
+  const isEditMode = mode === "edit";
   const snippetLanguage = data.payload.snippet?.language ?? "text";
   const snippetContent = data.payload.snippet?.content ?? "";
   const tagsText = data.payload.tags.join(", ");
+  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase();
+
+  const nodeSearchContent = useMemo(
+    () =>
+      [
+        data.title,
+        data.payload.markdown,
+        data.payload.tags.join(" "),
+        data.payload.severity,
+        snippetLanguage,
+        snippetContent
+      ].join("\n"),
+    [data.payload.markdown, data.payload.severity, data.payload.tags, data.title, snippetContent, snippetLanguage]
+  );
+
+  const nodeMatchesSearch =
+    normalizedSearchTerm.length > 0 &&
+    nodeSearchContent.toLocaleLowerCase().includes(normalizedSearchTerm);
+  const isActiveSearchResult = nodeMatchesSearch && activeSearchNodeId === id;
+
+  const markdownComponents = useMemo(
+    () => ({
+      p: ({ children }: { children?: ReactNode }) => (
+        <p>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</p>
+      ),
+      h1: ({ children }: { children?: ReactNode }) => (
+        <h1>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</h1>
+      ),
+      h2: ({ children }: { children?: ReactNode }) => (
+        <h2>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</h2>
+      ),
+      h3: ({ children }: { children?: ReactNode }) => (
+        <h3>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</h3>
+      ),
+      h4: ({ children }: { children?: ReactNode }) => (
+        <h4>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</h4>
+      ),
+      li: ({ children }: { children?: ReactNode }) => (
+        <li>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</li>
+      ),
+      strong: ({ children }: { children?: ReactNode }) => (
+        <strong>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</strong>
+      ),
+      em: ({ children }: { children?: ReactNode }) => (
+        <em>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</em>
+      ),
+      code: ({ children }: { children?: ReactNode }) => (
+        <code>{highlightChildren(children, normalizedSearchTerm, isActiveSearchResult)}</code>
+      )
+    }),
+    [isActiveSearchResult, normalizedSearchTerm]
+  );
 
   const imageUrls = useMemo(
     () =>
@@ -208,6 +346,10 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDropActive(false);
+    if (!isEditMode) {
+      return;
+    }
+
     setSelectedNodeId(id);
     const allFiles = Array.from(event.dataTransfer.files);
     console.debug("[evidence:drop] %d file(s): %s", allFiles.length, allFiles.map((f) => `${f.name} (${f.type})`).join(", "));
@@ -215,6 +357,11 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   };
 
   const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!isEditMode) {
+      setIsDropActive(false);
+      return;
+    }
+
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     setIsDropActive(true);
@@ -252,6 +399,10 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   };
 
   const onPaste = (event: ClipboardEvent<HTMLElement>) => {
+    if (!isEditMode) {
+      return;
+    }
+
     console.debug("[evidence:onPaste] items=%d files=%d", event.clipboardData.items.length, event.clipboardData.files.length);
     const files = getPastedImageFiles(event);
     if (files.length === 0) {
@@ -280,7 +431,7 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
 
   return (
     <div
-      className={`${styles.node} ${selected ? styles.nodeSelected : ""}`}
+      className={`${styles.node} ${selected ? styles.nodeSelected : ""} ${nodeMatchesSearch ? styles.searchMatch : ""} ${isActiveSearchResult ? styles.searchActiveMatch : ""}`}
       onClick={() => setSelectedNodeId(id)}
       onDoubleClick={onNodeDoubleClick}
       onDragOver={onDragOver}
@@ -305,7 +456,9 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
               aria-label="Node title"
             />
           ) : (
-            <h4 className={styles.title}>{data.title}</h4>
+            <h4 className={styles.title}>
+              {highlightText(data.title, normalizedSearchTerm, isActiveSearchResult)}
+            </h4>
           )}
           <div className={styles.meta}>Double click to switch mode</div>
         </div>
@@ -384,38 +537,64 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         ) : (
           <>
             <article className={styles.markdownView}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.payload.markdown}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {data.payload.markdown}
+              </ReactMarkdown>
             </article>
 
             <div className={styles.metaChips}>
-              <span className={styles.metaChip}>Severity: {data.payload.severity}</span>
+              <span className={styles.metaChip}>
+                Severity: {highlightText(data.payload.severity, normalizedSearchTerm, isActiveSearchResult)}
+              </span>
             </div>
 
             {snippetContent ? (
               <div className={styles.snippetBlock}>
-                <div className={styles.snippetMeta}>{snippetLanguage || "text"}</div>
-                <pre className={styles.snippetContent}>{snippetContent}</pre>
+                <div className={styles.snippetMeta}>
+                  {highlightText(snippetLanguage || "text", normalizedSearchTerm, isActiveSearchResult)}
+                </div>
+                <pre className={styles.snippetContent}>
+                  {highlightText(snippetContent, normalizedSearchTerm, isActiveSearchResult)}
+                </pre>
               </div>
             ) : null}
           </>
         )}
 
-        <div className={`${styles.dropzone} nodrag ${isDropActive ? styles.dropzoneActive : ""}`}>
-          {isUploading
-            ? "Saving evidence image..."
-            : "Drag and drop images here or focus this node and press Ctrl+V"}
-        </div>
+        {isEditMode ? (
+          <div className={`${styles.dropzone} nodrag ${isDropActive ? styles.dropzoneActive : ""}`}>
+            {isUploading
+              ? "Saving evidence image..."
+              : "Drag and drop images here or focus this node and press Ctrl+V"}
+          </div>
+        ) : null}
 
         {imageUrls.length > 0 ? (
           <div className={styles.imageGrid}>
             {imageUrls.map((image) => (
               <figure key={image.imageId} className={styles.imageCard}>
-                <img className={styles.image} src={image.src} alt="Evidence" />
+                <button
+                  type="button"
+                  className={`${styles.imagePreviewButton} nodrag`}
+                  onClick={() => {
+                    if (!image.src) {
+                      return;
+                    }
+
+                    openImagePreview(image.src);
+                  }}
+                  aria-label="Open image preview"
+                >
+                  <img className={styles.image} src={image.src} alt="Evidence" />
+                </button>
                 <button
                   type="button"
                   className={`${styles.removeImageButton} nodrag`}
                   disabled={isBusy || isUploading}
-                  onClick={() => void removeEvidenceFromNode({ nodeId: id, imageId: image.imageId })}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void removeEvidenceFromNode({ nodeId: id, imageId: image.imageId });
+                  }}
                   aria-label="Remove image"
                 >
                   x
@@ -427,7 +606,11 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
       </section>
 
       <footer className={styles.footer}>
-        {data.payload.tags.length > 0 ? data.payload.tags.join(" | ") : "no tags"}
+        {highlightText(
+          data.payload.tags.length > 0 ? data.payload.tags.join(" | ") : "no tags",
+          normalizedSearchTerm,
+          isActiveSearchResult
+        )}
       </footer>
 
       <Handle type="source" position={Position.Right} />

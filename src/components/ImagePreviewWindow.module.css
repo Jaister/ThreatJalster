@@ -1,0 +1,100 @@
+.window {
+  position: absolute;
+  z-index: 120;
+  width: min(920px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: move;
+  user-select: none;
+}
+
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoomButton,
+.closeButton {
+  height: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zoomButton {
+  min-width: 24px;
+  padding: 0 6px;
+}
+
+.zoomLabel {
+  min-width: 46px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.closeButton {
+  width: 24px;
+  font-size: 14px;
+}
+
+.zoomButton:hover,
+.closeButton:hover {
+  border-color: var(--color-border-strong);
+}
+
+.imageWrap {
+  height: min(70vh, 560px);
+  max-height: calc(100vh - 180px);
+  overflow: hidden;
+  padding: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-bg);
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform 90ms ease;
+}
+
+.imagePannable {
+  cursor: grab;
+}
+
+.imagePannable:active {
+  cursor: grabbing;
+}
+
+@media (max-width: 960px) {
+  .window {
+    width: calc(100% - 16px);
+  }
+
+  .imageWrap {
+    height: min(58vh, 420px);
+  }
+}

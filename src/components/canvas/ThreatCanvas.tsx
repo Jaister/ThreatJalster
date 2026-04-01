@@ -24,8 +24,10 @@ const MAX_ZOOM = 2;
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
-  flowX: number;
-  flowY: number;
+  type: "pane" | "node";
+  flowX?: number;
+  flowY?: number;
+  nodeId?: string;
 }
 
 const ZoomSliderControl = () => {
@@ -60,6 +62,7 @@ export const ThreatCanvas = () => {
   const nodes = useWorkspaceStore((state) => state.nodes);
   const edges = useWorkspaceStore((state) => state.edges);
   const addNode = useWorkspaceStore((state) => state.addNode);
+  const deleteNode = useWorkspaceStore((state) => state.deleteNode);
   const onNodesChange = useWorkspaceStore((state) => state.onNodesChange);
   const onEdgesChange = useWorkspaceStore((state) => state.onEdgesChange);
   const onConnect = useWorkspaceStore((state) => state.onConnect);
@@ -75,17 +78,42 @@ export const ThreatCanvas = () => {
     setContextMenu({
       screenX: event.clientX,
       screenY: event.clientY,
+      type: "pane",
       flowX: flowPosition.x,
       flowY: flowPosition.y
     });
   };
 
+  const onNodeContextMenu = (
+    event: globalThis.MouseEvent | ReactMouseEvent<Element>,
+    node: ThreatNode
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedNodeId(node.id);
+    setContextMenu({
+      screenX: event.clientX,
+      screenY: event.clientY,
+      type: "node",
+      nodeId: node.id
+    });
+  };
+
   const onAddNodeFromContext = () => {
-    if (!contextMenu) {
+    if (!contextMenu || contextMenu.type !== "pane") {
       return;
     }
 
-    addNode({ x: contextMenu.flowX, y: contextMenu.flowY });
+    addNode({ x: contextMenu.flowX ?? 0, y: contextMenu.flowY ?? 0 });
+    setContextMenu(null);
+  };
+
+  const onDeleteNodeFromContext = () => {
+    if (!contextMenu || contextMenu.type !== "node" || !contextMenu.nodeId) {
+      return;
+    }
+
+    deleteNode(contextMenu.nodeId);
     setContextMenu(null);
   };
 
@@ -118,6 +146,7 @@ export const ThreatCanvas = () => {
         setContextMenu(null);
       }}
       onPaneContextMenu={onPaneContextMenu}
+      onNodeContextMenu={onNodeContextMenu}
       panOnScroll
       zoomOnPinch
       zoomOnScroll
@@ -150,9 +179,15 @@ export const ThreatCanvas = () => {
           onContextMenu={(event) => event.preventDefault()}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <button type="button" onClick={onAddNodeFromContext}>
-            Anadir nodo
-          </button>
+          {contextMenu.type === "pane" ? (
+            <button type="button" onClick={onAddNodeFromContext}>
+              Anadir nodo
+            </button>
+          ) : (
+            <button type="button" onClick={onDeleteNodeFromContext}>
+              Borrar nodo
+            </button>
+          )}
         </div>
       ) : null}
     </ReactFlow>

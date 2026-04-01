@@ -39,6 +39,9 @@ interface WorkspaceState {
   edges: ThreatEdge[];
   evidence: Record<string, EvidenceImageMeta>;
   evidencePreviewData: Record<string, string>;
+  openedImagePreviewSrc?: string;
+  searchTerm: string;
+  activeSearchNodeId?: string;
   selectedNodeId?: string;
   investigationId: string;
   projectDir?: string;
@@ -50,6 +53,8 @@ interface WorkspaceState {
   onEdgesChange: (changes: EdgeChange<ThreatEdge>[]) => void;
   onConnect: (connection: Connection) => void;
   addNode: (position?: XYPosition) => void;
+  deleteNode: (nodeId: string) => void;
+  deleteSelectedNode: () => void;
   setSelectedNodeId: (nodeId?: string) => void;
   setNodeMode: (nodeId: string, mode: NodeMode) => void;
   updateNodeTextFields: (nodeId: string, updates: NodeTextUpdates) => void;
@@ -64,6 +69,10 @@ interface WorkspaceState {
     nodeId: string;
     imageId: string;
   }) => void;
+  openImagePreview: (src: string) => void;
+  closeImagePreview: () => void;
+  setSearchTerm: (value: string) => void;
+  setActiveSearchNodeId: (nodeId?: string) => void;
   enqueueToast: (text: string) => void;
   dismissToast: (toastId: string) => void;
   setInvestigationId: (id: string) => void;
@@ -73,6 +82,11 @@ interface WorkspaceState {
 }
 
 const now = () => new Date().toISOString();
+
+const isDialogCancellation = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /cancel/i.test(message);
+};
 
 const buildWorkspaceDocument = (state: WorkspaceState): WorkspaceDocument => ({
   version: 1,
@@ -245,6 +259,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   edges: demo.edges,
   evidence: demo.evidence,
   evidencePreviewData: {},
+  openedImagePreviewSrc: undefined,
+  searchTerm: "",
+  activeSearchNodeId: undefined,
   selectedNodeId: demo.nodes[0]?.id,
   isBusy: false,
   error: undefined,
@@ -325,6 +342,60 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedNodeId: nodeId
       };
     });
+  },
+
+  deleteNode: (nodeId) => {
+    set((state) => {
+      const targetNode = state.nodes.find((node) => node.id === nodeId);
+      if (!targetNode) {
+        return state;
+      }
+
+      const removedImageIds = new Set(targetNode.data.payload.evidenceImageIds);
+      const removedPreviewSources = new Set(
+        targetNode.data.payload.evidenceImageIds
+          .map((imageId) => state.evidencePreviewData[imageId])
+          .filter((src): src is string => Boolean(src))
+      );
+
+      const remainingNodes = state.nodes.filter((node) => node.id !== nodeId);
+      const remainingEdges = state.edges.filter(
+        (edge) => edge.source !== nodeId && edge.target !== nodeId
+      );
+      const remainingEvidence = Object.fromEntries(
+        Object.entries(state.evidence).filter(([imageId]) => !removedImageIds.has(imageId))
+      );
+      const remainingPreviewData = Object.fromEntries(
+        Object.entries(state.evidencePreviewData).filter(([imageId]) => !removedImageIds.has(imageId))
+      );
+
+      const nextSelectedNodeId =
+        state.selectedNodeId === nodeId ? remainingNodes[0]?.id : state.selectedNodeId;
+      const shouldClosePreview =
+        Boolean(state.openedImagePreviewSrc) && removedPreviewSources.has(state.openedImagePreviewSrc as string);
+
+      return {
+        nodes: remainingNodes,
+        edges: remainingEdges,
+        evidence: remainingEvidence,
+        evidencePreviewData: remainingPreviewData,
+        selectedNodeId: nextSelectedNodeId,
+        activeSearchNodeId:
+          state.activeSearchNodeId === nodeId ? undefined : state.activeSearchNodeId,
+        openedImagePreviewSrc: shouldClosePreview ? undefined : state.openedImagePreviewSrc
+      };
+    });
+
+    get().enqueueToast("Node deleted. Evidence files remain on disk for now.");
+  },
+
+  deleteSelectedNode: () => {
+    const selectedNodeId = get().selectedNodeId;
+    if (!selectedNodeId) {
+      return;
+    }
+
+    get().deleteNode(selectedNodeId);
   },
 
   setSelectedNodeId: (nodeId) => {
@@ -460,6 +531,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  openImagePreview: (src) => {
+    set({ openedImagePreviewSrc: src });
+  },
+
+  closeImagePreview: () => {
+    set({ openedImagePreviewSrc: undefined });
+  },
+
+  setSearchTerm: (value) => {
+    set({ searchTerm: value });
+  },
+
+  setActiveSearchNodeId: (nodeId) => {
+    set({ activeSearchNodeId: nodeId });
+  },
+
   enqueueToast: (text) => {
     const toastId = crypto.randomUUID();
 
@@ -498,6 +585,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       get().enqueueToast(`Project saved: ${result.workspacePath}`);
     } catch (error) {
       console.debug("[save] error: %o", error);
+      if (isDialogCancellation(error)) {
+        set({ isBusy: false, error: undefined });
+        return;
+      }
+
       set({
         isBusy: false,
         error: error instanceof Error ? error.message : "Failed to save project"
@@ -520,6 +612,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       get().enqueueToast(`Project saved as: ${result.workspacePath}`);
     } catch (error) {
       console.debug("[save] error: %o", error);
+      if (isDialogCancellation(error)) {
+        set({ isBusy: false, error: undefined });
+        return;
+      }
+
       set({
         isBusy: false,
         error: error instanceof Error ? error.message : "Failed to save project"
@@ -542,10 +639,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         edges: workspace.edges,
         evidence: workspace.evidence,
         evidencePreviewData: buildEvidencePreviews(workspace.evidence),
+        openedImagePreviewSrc: undefined,
+        searchTerm: "",
+        activeSearchNodeId: undefined,
         selectedNodeId: workspace.nodes[0]?.id,
         isBusy: false
       });
     } catch (error) {
+      if (isDialogCancellation(error)) {
+        set({ isBusy: false, error: undefined });
+        return;
+      }
+
       set({
         isBusy: false,
         error: error instanceof Error ? error.message : "Failed to load project"
