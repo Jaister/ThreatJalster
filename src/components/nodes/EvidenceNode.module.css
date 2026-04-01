@@ -1,13 +1,21 @@
 .node {
-  width: 340px;
+  width: var(--node-width, 340px);
+  height: var(--node-height, auto);
+  min-width: 260px;
+  min-height: 220px;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-card);
   color: var(--color-text);
+  display: flex;
+  flex-direction: column;
 }
 
 .node:hover {
-  border-color: var(--color-border-strong);
+  border-color: transparent;
+  outline: calc(var(--line-width) * 1.5) solid var(--color-border-strong);
+  outline-offset: calc(var(--line-width) * -0.5);
+
 }
 
 .nodeSelected {
@@ -38,25 +46,25 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 9px;
+  border-bottom: var(--line-width) solid var(--color-border);
 }
 
 .title {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.3;
 }
 
 .titleInput {
   width: 100%;
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-bg);
   color: var(--color-text);
   padding: 5px 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -67,17 +75,17 @@
 
 .meta {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
 .modeButton {
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   background: var(--color-bg);
   color: var(--color-text);
   border-radius: var(--radius-control);
-  font-size: 11px;
-  padding: 4px 8px;
+  font-size: 14px;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
@@ -87,12 +95,17 @@
 
 .body {
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 8px;
   padding: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .markdownView {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--color-text);
 }
@@ -111,7 +124,7 @@
 
 .markdownView :global(code) {
   background: var(--color-bg);
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   padding: 1px 4px;
   border-radius: 3px;
   font-family: var(--font-mono);
@@ -120,12 +133,12 @@
 .editor {
   resize: vertical;
   min-height: 96px;
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-bg);
   color: var(--color-text);
   padding: 8px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -136,12 +149,12 @@
 .textInput,
 .selectInput {
   width: 100%;
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-bg);
   color: var(--color-text);
   padding: 7px 8px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.3;
 }
 
@@ -153,7 +166,7 @@
 .fieldLabel {
   display: grid;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
@@ -164,19 +177,79 @@
 .metaChips {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 6px;
+  width: 100%;
 }
 
 .metaChip {
-  border: 1px solid var(--color-border);
+  display: inline-flex;
+  align-self: flex-start;
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   padding: 3px 7px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
+.severityChip {
+  align-items: center;
+  gap: 6px;
+}
+
+.severityValue {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.severitySelect {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.severityLow {
+  color: var(--severity-low);
+}
+
+.severityMedium {
+  color: var(--severity-medium);
+}
+
+.severityHigh {
+  color: var(--severity-high);
+}
+
+.severityCritical {
+  color: var(--severity-critical);
+}
+
+.severityChip.severityLow,
+.severitySelect.severityLow {
+  border-color: var(--severity-low);
+  background: var(--severity-low-bg);
+}
+
+.severityChip.severityMedium,
+.severitySelect.severityMedium {
+  border-color: var(--severity-medium);
+  background: var(--severity-medium-bg);
+}
+
+.severityChip.severityHigh,
+.severitySelect.severityHigh {
+  border-color: var(--severity-high);
+  background: var(--severity-high-bg);
+}
+
+.severityChip.severityCritical,
+.severitySelect.severityCritical {
+  border-color: var(--severity-critical);
+  background: var(--severity-critical-bg);
+}
+
 .snippetBlock {
-  border: 1px solid var(--color-border);
+  width: 100%;
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-bg);
   overflow: hidden;
@@ -184,26 +257,26 @@
 
 .snippetMeta {
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--line-width) solid var(--color-border);
 }
 
 .snippetContent {
   margin: 0;
   padding: 8px;
   overflow: auto;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.35;
   font-family: var(--font-mono);
   color: var(--color-text);
 }
 
 .dropzone {
-  border: 1px dashed var(--color-border);
+  border: var(--line-width) dashed var(--color-border);
   border-radius: var(--radius-control);
   padding: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-muted);
 }
 
@@ -220,7 +293,7 @@
 
 .imageCard {
   position: relative;
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-control);
   overflow: hidden;
   background: var(--color-bg);
@@ -260,11 +333,11 @@
   top: 4px;
   width: 18px;
   height: 18px;
-  border: 1px solid var(--color-border);
+  border: var(--line-width) solid var(--color-border);
   border-radius: 3px;
   background: var(--color-bg);
   color: var(--color-text);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
   z-index: 2;
@@ -276,8 +349,8 @@
 
 .footer {
   padding: 8px 10px;
-  border-top: 1px solid var(--color-border);
-  font-size: 11px;
+  border-top: var(--line-width) solid var(--color-border);
+  font-size: 12px;
   color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;

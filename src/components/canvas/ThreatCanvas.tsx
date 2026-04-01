@@ -4,6 +4,7 @@ import {
   MiniMap,
   Panel,
   ReactFlow,
+  type DefaultEdgeOptions,
   useReactFlow,
   useViewport
 } from "@xyflow/react";
@@ -24,10 +25,11 @@ const MAX_ZOOM = 2;
 interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
-  type: "pane" | "node";
+  type: "pane" | "node" | "edge";
   flowX?: number;
   flowY?: number;
   nodeId?: string;
+  edgeId?: string;
 }
 
 const ZoomSliderControl = () => {
@@ -63,6 +65,7 @@ export const ThreatCanvas = () => {
   const edges = useWorkspaceStore((state) => state.edges);
   const addNode = useWorkspaceStore((state) => state.addNode);
   const deleteNode = useWorkspaceStore((state) => state.deleteNode);
+  const deleteEdge = useWorkspaceStore((state) => state.deleteEdge);
   const onNodesChange = useWorkspaceStore((state) => state.onNodesChange);
   const onEdgesChange = useWorkspaceStore((state) => state.onEdgesChange);
   const onConnect = useWorkspaceStore((state) => state.onConnect);
@@ -99,6 +102,20 @@ export const ThreatCanvas = () => {
     });
   };
 
+  const onEdgeContextMenu = (
+    event: globalThis.MouseEvent | ReactMouseEvent<Element>,
+    edge: ThreatEdge
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      screenX: event.clientX,
+      screenY: event.clientY,
+      type: "edge",
+      edgeId: edge.id
+    });
+  };
+
   const onAddNodeFromContext = () => {
     if (!contextMenu || contextMenu.type !== "pane") {
       return;
@@ -117,13 +134,24 @@ export const ThreatCanvas = () => {
     setContextMenu(null);
   };
 
-  const defaultEdgeOptions = useMemo(
+  const onDeleteEdgeFromContext = () => {
+    if (!contextMenu || contextMenu.type !== "edge" || !contextMenu.edgeId) {
+      return;
+    }
+
+    deleteEdge(contextMenu.edgeId);
+    setContextMenu(null);
+  };
+
+  const defaultEdgeOptions = useMemo<DefaultEdgeOptions>(
     () => ({
       type: "straight",
       animated: false,
       style: {
-        strokeWidth: 2.5,
-        stroke: "rgba(255, 255, 255, 0.78)"
+        strokeWidth: 2,
+        stroke: "#ffffff",
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
       }
     }),
     []
@@ -147,6 +175,7 @@ export const ThreatCanvas = () => {
       }}
       onPaneContextMenu={onPaneContextMenu}
       onNodeContextMenu={onNodeContextMenu}
+      onEdgeContextMenu={onEdgeContextMenu}
       panOnScroll
       zoomOnPinch
       zoomOnScroll
@@ -155,6 +184,12 @@ export const ThreatCanvas = () => {
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       proOptions={{ hideAttribution: true }}
       defaultEdgeOptions={defaultEdgeOptions}
+      connectionLineStyle={{
+        stroke: "#ffffff",
+        strokeWidth: 2,
+        strokeLinecap: "round",
+        strokeLinejoin: "round"
+      }}
       connectionLineType={ConnectionLineType.Straight}
       onlyRenderVisibleElements={false}
     >
@@ -183,9 +218,13 @@ export const ThreatCanvas = () => {
             <button type="button" onClick={onAddNodeFromContext}>
               Anadir nodo
             </button>
-          ) : (
+          ) : contextMenu.type === "node" ? (
             <button type="button" onClick={onDeleteNodeFromContext}>
               Borrar nodo
+            </button>
+          ) : (
+            <button type="button" onClick={onDeleteEdgeFromContext}>
+              Borrar enlace
             </button>
           )}
         </div>

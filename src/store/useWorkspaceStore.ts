@@ -52,6 +52,7 @@ interface WorkspaceState {
   onNodesChange: (changes: NodeChange<ThreatNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<ThreatEdge>[]) => void;
   onConnect: (connection: Connection) => void;
+  deleteEdge: (edgeId: string) => void;
   addNode: (position?: XYPosition) => void;
   deleteNode: (nodeId: string) => void;
   deleteSelectedNode: () => void;
@@ -280,6 +281,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   onConnect: (connection) => {
+    if (!connection.source || !connection.target) {
+      return;
+    }
+
+    if (connection.source === connection.target) {
+      get().enqueueToast("A node cannot connect to itself.");
+      return;
+    }
+
     set((state) => ({
       edges: addEdge<ThreatEdge>(
         {
@@ -294,6 +304,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         state.edges
       ) as ThreatEdge[]
     }));
+  },
+
+  deleteEdge: (edgeId) => {
+    set((state) => {
+      const exists = state.edges.some((edge) => edge.id === edgeId);
+      if (!exists) {
+        return state;
+      }
+
+      return {
+        edges: state.edges.filter((edge) => edge.id !== edgeId)
+      };
+    });
+
+    get().enqueueToast("Edge deleted.");
   },
 
   addNode: (position) => {

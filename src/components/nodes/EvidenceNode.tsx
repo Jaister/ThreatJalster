@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   Fragment,
   cloneElement,
   isValidElement,
@@ -10,7 +11,7 @@ import {
   type ReactElement,
   type ReactNode
 } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { readClipboardImage, saveEvidenceFile, toAssetUrl } from "../../lib/tauri";
@@ -20,6 +21,24 @@ import styles from "./EvidenceNode.module.css";
 
 const SUPPORTED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 const SEVERITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
+const SEVERITY_OPTION_STYLES: Record<(typeof SEVERITY_OPTIONS)[number], CSSProperties> = {
+  low: {
+    color: "var(--severity-low)",
+    background: "var(--color-surface)"
+  },
+  medium: {
+    color: "var(--severity-medium)",
+    background: "var(--color-surface)"
+  },
+  high: {
+    color: "var(--severity-high)",
+    background: "var(--color-surface)"
+  },
+  critical: {
+    color: "var(--severity-critical)",
+    background: "var(--color-surface)"
+  }
+};
 
 const isImageType = (mimeType: string): boolean => mimeType.startsWith("image/");
 
@@ -183,7 +202,7 @@ const highlightChildren = (node: ReactNode, query: string, isActive: boolean): R
   return node;
 };
 
-export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
+export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<ThreatNode>) => {
   const [isDropActive, setIsDropActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const evidencePreviewData = useWorkspaceStore((state) => state.evidencePreviewData);
@@ -263,6 +282,20 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         .filter((image) => Boolean(image.src)),
     [data.payload.evidenceImageIds, evidencePreviewData]
   );
+
+  const nodeStyle = {
+    "--node-width": typeof width === "number" ? `${Math.round(width)}px` : "340px",
+    "--node-height": typeof height === "number" ? `${Math.round(height)}px` : "auto"
+  } as CSSProperties;
+
+  const severityClassName =
+    data.payload.severity === "low"
+      ? styles.severityLow
+      : data.payload.severity === "medium"
+        ? styles.severityMedium
+        : data.payload.severity === "high"
+          ? styles.severityHigh
+          : styles.severityCritical;
 
   const attachFiles = async (files: File[]): Promise<void> => {
     console.debug("[evidence:attach] called with %d file(s)", files.length);
@@ -432,6 +465,7 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
   return (
     <div
       className={`${styles.node} ${selected ? styles.nodeSelected : ""} ${nodeMatchesSearch ? styles.searchMatch : ""} ${isActiveSearchResult ? styles.searchActiveMatch : ""}`}
+      style={nodeStyle}
       onClick={() => setSelectedNodeId(id)}
       onDoubleClick={onNodeDoubleClick}
       onDragOver={onDragOver}
@@ -442,7 +476,27 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
       role="button"
       aria-label="Evidence node"
     >
-      <Handle type="target" position={Position.Left} />
+      {isEditMode ? (
+        <NodeResizer
+          isVisible={selected}
+          minWidth={260}
+          minHeight={220}
+          handleStyle={{
+            width: 10,
+            height: 10,
+            borderRadius: 2,
+            border: "1.5px solid #404040",
+            background: "#ffffff"
+          }}
+          lineStyle={{
+            borderColor: "rgba(255, 255, 255, 0.9)",
+            borderWidth: 1.5
+          }}
+        />
+      ) : null}
+
+      <Handle id="target-left" type="target" position={Position.Left} />
+      <Handle id="target-top" type="target" position={Position.Top} />
 
       <header className={styles.header}>
         <div>
@@ -497,13 +551,13 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
             <label className={styles.fieldLabel}>
               Severity
               <select
-                className={`${styles.selectInput} nodrag`}
+                className={`${styles.selectInput} ${styles.severitySelect} ${severityClassName} nodrag`}
                 value={data.payload.severity}
                 onChange={onSeverityChange}
                 aria-label="Node severity"
               >
                 {SEVERITY_OPTIONS.map((severity) => (
-                  <option key={severity} value={severity}>
+                  <option key={severity} value={severity} style={SEVERITY_OPTION_STYLES[severity]}>
                     {severity}
                   </option>
                 ))}
@@ -536,24 +590,27 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
           </>
         ) : (
           <>
-            <article className={styles.markdownView}>
+            <article className={`${styles.markdownView} nodrag nopan`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {data.payload.markdown}
               </ReactMarkdown>
             </article>
 
-            <div className={styles.metaChips}>
-              <span className={styles.metaChip}>
-                Severity: {highlightText(data.payload.severity, normalizedSearchTerm, isActiveSearchResult)}
+            <div className={`${styles.metaChips} nodrag nopan`}>
+              <span className={`${styles.metaChip} ${styles.severityChip} ${severityClassName}`}>
+                Severity:
+                <span className={`${styles.severityValue} ${severityClassName}`}>
+                  {highlightText(data.payload.severity, normalizedSearchTerm, isActiveSearchResult)}
+                </span>
               </span>
             </div>
 
             {snippetContent ? (
-              <div className={styles.snippetBlock}>
-                <div className={styles.snippetMeta}>
+              <div className={`${styles.snippetBlock} nodrag nopan`}>
+                <div className={`${styles.snippetMeta} nodrag nopan`}>
                   {highlightText(snippetLanguage || "text", normalizedSearchTerm, isActiveSearchResult)}
                 </div>
-                <pre className={styles.snippetContent}>
+                <pre className={`${styles.snippetContent} nodrag nopan`}>
                   {highlightText(snippetContent, normalizedSearchTerm, isActiveSearchResult)}
                 </pre>
               </div>
@@ -613,7 +670,8 @@ export const EvidenceNode = ({ id, data, selected }: NodeProps<ThreatNode>) => {
         )}
       </footer>
 
-      <Handle type="source" position={Position.Right} />
+      <Handle id="source-right" type="source" position={Position.Right} />
+      <Handle id="source-bottom" type="source" position={Position.Bottom} />
     </div>
   );
 };
