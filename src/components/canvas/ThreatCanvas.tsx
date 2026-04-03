@@ -1,18 +1,17 @@
 import {
   Background,
   ConnectionLineType,
-  MiniMap,
   Panel,
   ReactFlow,
   type DefaultEdgeOptions,
   useReactFlow,
   useViewport
 } from "@xyflow/react";
-import { ChangeEvent, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { ChangeEvent, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useTauriFileDrop } from "../../hooks/useTauriFileDrop";
 import { useWorkspaceStore } from "../../store";
 import type { ThreatEdge, ThreatNode } from "../../types/workspace";
 import { EvidenceNode } from "../nodes/EvidenceNode";
-import { CustomMiniMapNode } from "./MiniMapNode";
 
 const nodeTypes = {
   intelNode: EvidenceNode,
@@ -61,8 +60,10 @@ const ZoomSliderControl = () => {
 
 export const ThreatCanvas = () => {
   const [contextMenu, setContextMenu] = useState<CanvasContextMenuState | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const nodes = useWorkspaceStore((state) => state.nodes);
   const edges = useWorkspaceStore((state) => state.edges);
+  const isDragOverCanvas = useWorkspaceStore((state) => state.isDragOverCanvas);
   const addNode = useWorkspaceStore((state) => state.addNode);
   const deleteNode = useWorkspaceStore((state) => state.deleteNode);
   const deleteEdge = useWorkspaceStore((state) => state.deleteEdge);
@@ -70,7 +71,10 @@ export const ThreatCanvas = () => {
   const onEdgesChange = useWorkspaceStore((state) => state.onEdgesChange);
   const onConnect = useWorkspaceStore((state) => state.onConnect);
   const setSelectedNodeId = useWorkspaceStore((state) => state.setSelectedNodeId);
-  const { screenToFlowPosition } = useReactFlow<ThreatNode, ThreatEdge>();
+  const reactFlowInstance = useReactFlow<ThreatNode, ThreatEdge>();
+  const { screenToFlowPosition } = reactFlowInstance;
+
+  useTauriFileDrop(reactFlowInstance, containerRef);
 
   const onPaneContextMenu = (event: globalThis.MouseEvent | ReactMouseEvent<Element>) => {
     event.preventDefault();
@@ -158,6 +162,7 @@ export const ThreatCanvas = () => {
   );
 
   return (
+    <div ref={containerRef} className={`canvas-container ${isDragOverCanvas ? "drag-over" : ""}`}>
     <ReactFlow<ThreatNode, ThreatEdge>
       nodes={nodes}
       edges={edges}
@@ -176,6 +181,10 @@ export const ThreatCanvas = () => {
       onPaneContextMenu={onPaneContextMenu}
       onNodeContextMenu={onNodeContextMenu}
       onEdgeContextMenu={onEdgeContextMenu}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
       panOnScroll
       zoomOnPinch
       zoomOnScroll
@@ -191,21 +200,9 @@ export const ThreatCanvas = () => {
         strokeLinejoin: "round"
       }}
       connectionLineType={ConnectionLineType.Straight}
-      onlyRenderVisibleElements={false}
+      onlyRenderVisibleElements
     >
       <Background gap={24} size={1} color="rgba(255, 255, 255, 0.22)" />
-      <MiniMap
-        position="bottom-right"
-        className="canvas-minimap"
-        bgColor="#404040"
-        maskColor="rgba(255, 255, 255, 0.14)"
-        maskStrokeColor="rgba(255, 255, 255, 0.72)"
-        maskStrokeWidth={1}
-        offsetScale={2}
-        nodeComponent={CustomMiniMapNode}
-        pannable
-        zoomable
-      />
       <ZoomSliderControl />
       {contextMenu ? (
         <div
@@ -230,5 +227,6 @@ export const ThreatCanvas = () => {
         </div>
       ) : null}
     </ReactFlow>
+    </div>
   );
 };

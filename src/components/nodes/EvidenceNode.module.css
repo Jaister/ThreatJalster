@@ -1,8 +1,8 @@
 .node {
-  width: var(--node-width, 340px);
+  width: var(--node-width, 720px);
   height: var(--node-height, auto);
-  min-width: 260px;
-  min-height: 220px;
+  min-width: 720px;
+  min-height: 280px;
   background: var(--color-surface);
   border: var(--line-width) solid var(--color-border);
   border-radius: var(--radius-card);
@@ -192,7 +192,9 @@
   color: var(--color-text-muted);
 }
 
-.severityChip {
+.severityChip,
+.confidenceChip,
+.behaviorChip {
   align-items: center;
   gap: 6px;
 }
@@ -245,6 +247,34 @@
 .severitySelect.severityCritical {
   border-color: var(--severity-critical);
   background: var(--severity-critical-bg);
+}
+
+.ttpsList,
+.iocsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+}
+
+.ttpChip,
+.iocChip {
+  display: inline-flex;
+  border: var(--line-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.ttpChip {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.observedAt {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .snippetBlock {
@@ -319,12 +349,34 @@
   height: 88px;
   object-fit: cover;
   display: block;
-  transition: transform 140ms ease;
 }
 
-.imagePreviewButton:hover .image,
-.imagePreviewButton:focus-visible .image {
-  transform: scale(1.06);
+.pdfThumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 88px;
+  padding: 8px;
+  background: var(--color-bg);
+}
+
+.pdfIcon {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  letter-spacing: 0.05em;
+}
+
+.pdfName {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .removeImageButton {

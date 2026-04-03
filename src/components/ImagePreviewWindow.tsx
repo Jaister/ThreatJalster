@@ -32,6 +32,7 @@ interface ImagePreviewWindowProps {
 
 export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) => {
   const openedImagePreviewSrc = useWorkspaceStore((state) => state.openedImagePreviewSrc);
+  const openedImagePreviewMimeType = useWorkspaceStore((state) => state.openedImagePreviewMimeType);
   const closeImagePreview = useWorkspaceStore((state) => state.closeImagePreview);
   const [position, setPosition] = useState({ x: 64, y: 64 });
   const [zoom, setZoom] = useState(1);
@@ -41,6 +42,18 @@ export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) =>
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const panDragRef = useRef<PanDragState | null>(null);
+
+  const centerWindow = () => {
+    const container = containerRef.current;
+    const containerWidth = container?.clientWidth ?? globalThis.window.innerWidth;
+    const containerHeight = container?.clientHeight ?? globalThis.window.innerHeight;
+    const panelWidth = windowRef.current?.offsetWidth ?? Math.min(containerWidth - 16, 920);
+    const panelHeight = windowRef.current?.offsetHeight ?? Math.min(containerHeight - 16, 680);
+    const centeredX = Math.round((containerWidth - panelWidth) / 2);
+    const centeredY = Math.round((containerHeight - panelHeight) / 2);
+
+    setPosition(clampWindowPosition(centeredX, centeredY));
+  };
 
   const clampWindowPosition = (nextX: number, nextY: number): { x: number; y: number } => {
     const container = containerRef.current;
@@ -77,15 +90,7 @@ export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) =>
       return;
     }
 
-    const container = containerRef.current;
-    const containerWidth = container?.clientWidth ?? globalThis.window.innerWidth;
-    const containerHeight = container?.clientHeight ?? globalThis.window.innerHeight;
-    const panelWidth = Math.min(containerWidth - 16, 920);
-    const panelHeight = Math.min(containerHeight - 16, 680);
-    const centeredX = Math.round((containerWidth - panelWidth) / 2);
-    const centeredY = Math.round((containerHeight - panelHeight) / 2);
-
-    setPosition(clampWindowPosition(centeredX, centeredY));
+    centerWindow();
     setZoom(1);
     setPan({ x: 0, y: 0 });
   }, [containerRef, openedImagePreviewSrc]);
@@ -175,6 +180,10 @@ export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) =>
     return null;
   }
 
+  const isPdfPreview =
+    openedImagePreviewMimeType === "application/pdf" ||
+    /\.pdf(?:$|[?#])/i.test(openedImagePreviewSrc);
+
   return (
     <div
       ref={windowRef}
@@ -206,49 +215,41 @@ export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) =>
         <span>Evidence preview</span>
 
         <div className={styles.titleActions}>
-          <button
-            type="button"
-            className={styles.zoomButton}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              setZoom((current) => {
-                const nextZoom = clamp(Number((current - 0.2).toFixed(2)), 1, 6);
-                setPan((currentPan) => clampPan(currentPan, nextZoom));
-                return nextZoom;
-              });
-            }}
-            aria-label="Zoom out"
-          >
-            -
-          </button>
-          <span className={styles.zoomLabel}>{Math.round(zoom * 100)}%</span>
-          <button
-            type="button"
-            className={styles.zoomButton}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              setZoom((current) => {
-                const nextZoom = clamp(Number((current + 0.2).toFixed(2)), 1, 6);
-                setPan((currentPan) => clampPan(currentPan, nextZoom));
-                return nextZoom;
-              });
-            }}
-            aria-label="Zoom in"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            className={styles.zoomButton}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              setZoom(1);
-              setPan({ x: 0, y: 0 });
-            }}
-            aria-label="Reset image position"
-          >
-            1:1
-          </button>
+          {!isPdfPreview ? (
+            <>
+              <button
+                type="button"
+                className={styles.zoomButton}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  setZoom((current) => {
+                    const nextZoom = clamp(Number((current - 0.2).toFixed(2)), 1, 6);
+                    setPan((currentPan) => clampPan(currentPan, nextZoom));
+                    return nextZoom;
+                  });
+                }}
+                aria-label="Zoom out"
+              >
+                -
+              </button>
+              <span className={styles.zoomLabel}>{Math.round(zoom * 100)}%</span>
+              <button
+                type="button"
+                className={styles.zoomButton}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  setZoom((current) => {
+                    const nextZoom = clamp(Number((current + 0.2).toFixed(2)), 1, 6);
+                    setPan((currentPan) => clampPan(currentPan, nextZoom));
+                    return nextZoom;
+                  });
+                }}
+                aria-label="Zoom in"
+              >
+                +
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             className={styles.closeButton}
@@ -261,41 +262,63 @@ export const ImagePreviewWindow = ({ containerRef }: ImagePreviewWindowProps) =>
         </div>
       </div>
 
-      <div
-        ref={viewportRef}
-        className={styles.imageWrap}
-        onWheel={(event) => {
-          event.preventDefault();
-          setZoom((current) => {
-            const delta = event.deltaY < 0 ? 0.12 : -0.12;
-            const nextZoom = clamp(Number((current + delta).toFixed(2)), 1, 6);
-            setPan((currentPan) => clampPan(currentPan, nextZoom));
-            return nextZoom;
-          });
-        }}
-        onMouseDown={(event) => {
-          if (zoom <= 1) {
-            return;
-          }
+      {isPdfPreview ? (
+        <div className={styles.pdfWrap}>
+          <object
+            className={styles.pdfFrame}
+            data={openedImagePreviewSrc}
+            type="application/pdf"
+            aria-label="PDF preview"
+          >
+            <p className={styles.pdfFallback}>
+              This PDF could not be rendered in the preview window.
+              <a href={openedImagePreviewSrc} target="_blank" rel="noreferrer">
+                Open PDF in a new tab
+              </a>
+            </p>
+          </object>
+        </div>
+      ) : (
+        <div
+          ref={viewportRef}
+          className={styles.imageWrap}
+          onWheel={(event) => {
+            event.preventDefault();
+            setZoom((current) => {
+              const delta = event.deltaY < 0 ? 0.12 : -0.12;
+              const nextZoom = clamp(Number((current + delta).toFixed(2)), 1, 6);
+              setPan((currentPan) => clampPan(currentPan, nextZoom));
+              return nextZoom;
+            });
+          }}
+          onMouseDown={(event) => {
+            if (zoom <= 1) {
+              return;
+            }
 
-          event.preventDefault();
-          panDragRef.current = {
-            startX: event.clientX,
-            startY: event.clientY,
-            originX: pan.x,
-            originY: pan.y
-          };
-        }}
-      >
-        <img
-          ref={imageRef}
-          className={`${styles.image} ${zoom > 1 ? styles.imagePannable : ""}`}
-          src={openedImagePreviewSrc}
-          alt="Evidence preview"
-          draggable={false}
-          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-        />
-      </div>
+            event.preventDefault();
+            panDragRef.current = {
+              startX: event.clientX,
+              startY: event.clientY,
+              originX: pan.x,
+              originY: pan.y
+            };
+          }}
+        >
+          <img
+            ref={imageRef}
+            className={`${styles.image} ${zoom > 1 ? styles.imagePannable : ""}`}
+            src={openedImagePreviewSrc}
+            alt="Evidence preview"
+            draggable={false}
+            onLoad={() => {
+              setPan((current) => clampPan(current, zoom));
+              centerWindow();
+            }}
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+          />
+        </div>
+      )}
     </div>
   );
 };

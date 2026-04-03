@@ -44,6 +44,25 @@ export const loadProject = async (): Promise<LoadProjectResponse> => {
   return invoke("load_project");
 };
 
+export const copyEvidenceFile = async (
+  sourcePath: string,
+  originalName: string
+): Promise<string> => {
+  console.debug("[tauri:copyEvidence] invoking source=%s name=%s", sourcePath, originalName);
+  const result = await invoke<string>("copy_evidence_file", {
+    sourcePath,
+    originalName
+  });
+  console.debug("[tauri:copyEvidence] returned path=%s", result);
+  return result;
+};
+
+export const deleteEvidenceFile = async (storagePath: string): Promise<void> => {
+  console.debug("[tauri:deleteEvidence] invoking storagePath=%s", storagePath);
+  await invoke("delete_evidence_file", { storagePath });
+  console.debug("[tauri:deleteEvidence] done");
+};
+
 export const readClipboardImage = async (): Promise<string | null> => {
   return invoke("read_clipboard_image");
 };
@@ -67,4 +86,33 @@ export const toAssetUrl = (filePath: string): string => {
   const url = convertFileSrc(normalized, "asset");
   console.debug("[tauri:toAssetUrl] %s -> %s", filePath, url);
   return url;
+};
+
+const SUPPORTED_EVIDENCE_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "webp", "pdf"
+]);
+
+export const fileNameFromPath = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/");
+  return normalized.split("/").pop() ?? "unknown";
+};
+
+export const extensionFromPath = (filePath: string): string => {
+  const name = fileNameFromPath(filePath);
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+};
+
+export const isSupportedEvidenceFile = (filePath: string): boolean =>
+  SUPPORTED_EVIDENCE_EXTENSIONS.has(extensionFromPath(filePath));
+
+export const mimeFromExtension = (ext: string): string => {
+  switch (ext.toLowerCase()) {
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "webp": return "image/webp";
+    case "pdf": return "application/pdf";
+    default: return "application/octet-stream";
+  }
 };

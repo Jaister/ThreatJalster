@@ -3,6 +3,31 @@ import type { Edge, Node } from "@xyflow/react";
 export type Severity = "low" | "medium" | "high" | "critical";
 export type NodeMode = "view" | "edit";
 
+export type ThreatBehavior =
+  | "reconnaissance"
+  | "resource-development"
+  | "initial-access"
+  | "execution"
+  | "persistence"
+  | "privilege-escalation"
+  | "defense-evasion"
+  | "credential-access"
+  | "discovery"
+  | "lateral-movement"
+  | "collection"
+  | "c2-communication"
+  | "exfiltration"
+  | "impact";
+
+export type EdgeRelation =
+  | "enables"
+  | "lateral-to"
+  | "escalates"
+  | "exfiltrates"
+  | "persists"
+  | "c2-channel"
+  | "related";
+
 export interface EvidenceImageMeta {
   id: string;
   fileName: string;
@@ -23,7 +48,12 @@ export interface NodePayload {
   snippet?: CodeSnippet;
   evidenceImageIds: string[];
   tags: string[];
+  ttps: string[];
+  iocs: string[];
   severity: Severity;
+  confidence: number;
+  behavior?: ThreatBehavior;
+  observedAt?: string;
 }
 
 export interface ThreatNodeData {
@@ -36,7 +66,7 @@ export interface ThreatNodeData {
 
 export interface ThreatEdgeData {
   [key: string]: unknown;
-  relation: string;
+  relation: EdgeRelation;
   confidence: number;
 }
 

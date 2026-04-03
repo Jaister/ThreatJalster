@@ -1,7 +1,8 @@
 .window {
   position: absolute;
   z-index: 120;
-  width: min(920px, calc(100% - 16px));
+  width: fit-content;
+  max-width: calc(100% - 16px);
   max-height: calc(100% - 16px);
   border: var(--line-width) solid var(--color-border-strong);
   border-radius: var(--radius-card);
@@ -63,8 +64,9 @@
 }
 
 .imageWrap {
-  height: min(70vh, 560px);
-  max-height: calc(100vh - 180px);
+  width: fit-content;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 160px);
   overflow: hidden;
   padding: 8px;
   display: grid;
@@ -74,11 +76,12 @@
 
 .image {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 176px);
   object-fit: contain;
   transform-origin: center center;
-  transition: transform 90ms ease;
 }
 
 .imagePannable {
@@ -89,12 +92,50 @@
   cursor: grabbing;
 }
 
+.pdfWrap {
+  width: min(960px, calc(100vw - 48px));
+  height: min(82vh, 960px);
+  background: var(--color-bg);
+  padding: 8px;
+}
+
+.pdfFrame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+.pdfFallback {
+  margin: 0;
+  padding: 16px;
+  color: var(--color-text);
+  font-size: 13px;
+  display: grid;
+  gap: 8px;
+}
+
+.pdfFallback a {
+  color: var(--color-accent);
+}
+
 @media (max-width: 960px) {
   .window {
-    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
   }
 
   .imageWrap {
-    height: min(58vh, 420px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 140px);
+  }
+
+  .image {
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 156px);
+  }
+
+  .pdfWrap {
+    width: calc(100vw - 24px);
+    height: min(78vh, 860px);
   }
 }

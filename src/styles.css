@@ -159,6 +159,16 @@ button:disabled {
   min-height: 0;
 }
 
+.canvas-container {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-container.drag-over {
+  outline: var(--line-width) solid var(--color-border-strong);
+  outline-offset: calc(var(--line-width) * -1);
+}
+
 .toast-viewport {
   position: fixed;
   left: 12px;

@@ -8,6 +8,8 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             commands::save_evidence_file,
+            commands::copy_evidence_file,
+            commands::delete_evidence_file,
             commands::save_project,
             commands::load_project,
             commands::read_clipboard_image

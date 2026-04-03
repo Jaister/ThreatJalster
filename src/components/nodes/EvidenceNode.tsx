@@ -3,23 +3,26 @@ import {
   Fragment,
   cloneElement,
   isValidElement,
+  memo,
   useMemo,
   useState,
   type ChangeEvent,
   type ClipboardEvent,
   type DragEvent,
   type ReactElement,
-  type ReactNode
+  type ReactNode,
+  type WheelEvent
 } from "react";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { readClipboardImage, saveEvidenceFile, toAssetUrl } from "../../lib/tauri";
 import { useWorkspaceStore } from "../../store";
-import type { ThreatNode } from "../../types/workspace";
+import type { ThreatBehavior, ThreatNode } from "../../types/workspace";
 import styles from "./EvidenceNode.module.css";
 
-const SUPPORTED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+const SUPPORTED_FILE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "pdf"]);
+const PDF_MIME = "application/pdf";
 const SEVERITY_OPTIONS = ["low", "medium", "high", "critical"] as const;
 const SEVERITY_OPTION_STYLES: Record<(typeof SEVERITY_OPTIONS)[number], CSSProperties> = {
   low: {
@@ -40,7 +43,46 @@ const SEVERITY_OPTION_STYLES: Record<(typeof SEVERITY_OPTIONS)[number], CSSPrope
   }
 };
 
+const BEHAVIOR_OPTIONS: ThreatBehavior[] = [
+  "reconnaissance",
+  "resource-development",
+  "initial-access",
+  "execution",
+  "persistence",
+  "privilege-escalation",
+  "defense-evasion",
+  "credential-access",
+  "discovery",
+  "lateral-movement",
+  "collection",
+  "c2-communication",
+  "exfiltration",
+  "impact"
+];
+
 const isImageType = (mimeType: string): boolean => mimeType.startsWith("image/");
+
+const isSupportedFile = (file: File): boolean => {
+  if (isImageType(file.type) || file.type === PDF_MIME) {
+    return true;
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return SUPPORTED_FILE_EXTENSIONS.has(ext);
+};
+
+const resolveMimeType = (file: File): string => {
+  if (file.type && file.type.length > 0) {
+    return file.type;
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  if (ext === "pdf") return PDF_MIME;
+  return "application/octet-stream";
+};
 
 const parseTags = (raw: string): string[] =>
   raw
@@ -48,8 +90,8 @@ const parseTags = (raw: string): string[] =>
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
 
-const getImageFiles = (files: FileList | File[]): File[] =>
-  Array.from(files).filter((file) => isImageType(file.type));
+const getSupportedFiles = (files: FileList | File[]): File[] =>
+  Array.from(files).filter((file) => isSupportedFile(file));
 
 const getPastedImageFiles = (event: ClipboardEvent<HTMLElement>): File[] => {
   const itemFiles: File[] = [];
@@ -202,7 +244,7 @@ const highlightChildren = (node: ReactNode, query: string, isActive: boolean): R
   return node;
 };
 
-export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<ThreatNode>) => {
+export const EvidenceNode = memo(({ id, data, selected, width, height }: NodeProps<ThreatNode>) => {
   const [isDropActive, setIsDropActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const evidencePreviewData = useWorkspaceStore((state) => state.evidencePreviewData);
@@ -222,6 +264,9 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
   const snippetLanguage = data.payload.snippet?.language ?? "text";
   const snippetContent = data.payload.snippet?.content ?? "";
   const tagsText = data.payload.tags.join(", ");
+  const ttpsText = data.payload.ttps.join(", ");
+  const iocsText = data.payload.iocs.join(", ");
+  const confidencePercent = Math.round((data.payload.confidence ?? 0.5) * 100);
   const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase();
 
   const nodeSearchContent = useMemo(
@@ -230,11 +275,14 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
         data.title,
         data.payload.markdown,
         data.payload.tags.join(" "),
+        data.payload.ttps.join(" "),
+        data.payload.iocs.join(" "),
         data.payload.severity,
+        data.payload.behavior ?? "",
         snippetLanguage,
         snippetContent
       ].join("\n"),
-    [data.payload.markdown, data.payload.severity, data.payload.tags, data.title, snippetContent, snippetLanguage]
+    [data.payload.markdown, data.payload.severity, data.payload.tags, data.payload.ttps, data.payload.iocs, data.payload.behavior, data.title, snippetContent, snippetLanguage]
   );
 
   const nodeMatchesSearch =
@@ -275,16 +323,22 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
     [isActiveSearchResult, normalizedSearchTerm]
   );
 
-  const imageUrls = useMemo(
+  const evidence = useWorkspaceStore((state) => state.evidence);
+
+  const evidenceItems = useMemo(
     () =>
       data.payload.evidenceImageIds
-        .map((imageId) => ({ imageId, src: evidencePreviewData[imageId] }))
-        .filter((image) => Boolean(image.src)),
-    [data.payload.evidenceImageIds, evidencePreviewData]
+        .map((imageId) => ({
+          imageId,
+          src: evidencePreviewData[imageId],
+          meta: evidence[imageId]
+        }))
+        .filter((item) => Boolean(item.src)),
+    [data.payload.evidenceImageIds, evidencePreviewData, evidence]
   );
 
   const nodeStyle = {
-    "--node-width": typeof width === "number" ? `${Math.round(width)}px` : "340px",
+    "--node-width": typeof width === "number" ? `${Math.round(width)}px` : "720px",
     "--node-height": typeof height === "number" ? `${Math.round(height)}px` : "auto"
   } as CSSProperties;
 
@@ -307,11 +361,8 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
 
     try {
       for (const [index, file] of files.entries()) {
-        console.debug("[evidence:attach] file[%d] name=%s type=%s size=%d", index, file.name, file.type, file.size);
-        if (!isImageType(file.type)) {
-          console.debug("[evidence:attach] skipped (not image type)");
-          continue;
-        }
+        const mime = resolveMimeType(file);
+        console.debug("[evidence:attach] file[%d] name=%s type=%s resolved=%s size=%d", index, file.name, file.type, mime, file.size);
 
         const originalName = resolveUploadName(file, index);
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -325,12 +376,12 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
         attachEvidenceToNode({
           nodeId: id,
           originalFileName: originalName,
-          mimeType: SUPPORTED_IMAGE_MIME.has(file.type) ? file.type : "image/png",
+          mimeType: mime,
           storagePath,
           previewSrc
         });
 
-        enqueueToast(`Saved evidence image: ${storagePath}`);
+        enqueueToast(`Saved evidence: ${originalName}`);
       }
     } finally {
       setIsUploading(false);
@@ -353,6 +404,14 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
     updateNodeTextFields(id, { tags: parseTags(event.target.value) });
   };
 
+  const onTtpsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { ttps: parseTags(event.target.value) });
+  };
+
+  const onIocsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { iocs: parseTags(event.target.value) });
+  };
+
   const onSeverityChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.target.value;
     if (!SEVERITY_OPTIONS.includes(value as (typeof SEVERITY_OPTIONS)[number])) {
@@ -362,6 +421,21 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
     updateNodeTextFields(id, {
       severity: value as (typeof SEVERITY_OPTIONS)[number]
     });
+  };
+
+  const onConfidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { confidence: Number(event.target.value) / 100 });
+  };
+
+  const onBehaviorChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    updateNodeTextFields(id, {
+      behavior: (value || undefined) as ThreatBehavior | undefined
+    });
+  };
+
+  const onObservedAtChange = (event: ChangeEvent<HTMLInputElement>) => {
+    updateNodeTextFields(id, { observedAt: event.target.value || undefined });
   };
 
   const onSnippetLanguageChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -376,31 +450,47 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
     onToggleMode();
   };
 
+  const onBodyWheel = (event: WheelEvent<HTMLElement>) => {
+    if (event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    const el = event.currentTarget as HTMLElement;
+    if (el.scrollHeight > el.clientHeight) {
+      event.stopPropagation();
+    }
+  };
+
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     setIsDropActive(false);
+
     if (!isEditMode) {
-      return;
+      setNodeMode(id, "edit");
     }
 
     setSelectedNodeId(id);
     const allFiles = Array.from(event.dataTransfer.files);
-    console.debug("[evidence:drop] %d file(s): %s", allFiles.length, allFiles.map((f) => `${f.name} (${f.type})`).join(", "));
-    void attachFiles(getImageFiles(event.dataTransfer.files));
+    console.debug("[evidence:drop] %d file(s): %s", allFiles.length, allFiles.map((f) => `${f.name} (${f.type}, ext=${f.name.split(".").pop()})`).join(", "));
+    const supported = getSupportedFiles(allFiles);
+    console.debug("[evidence:drop] %d supported file(s) after filter", supported.length);
+    if (supported.length === 0) {
+      enqueueToast("No supported files. Drop images (png, jpg, webp) or PDFs.");
+      return;
+    }
+    void attachFiles(supported);
   };
 
   const onDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!isEditMode) {
-      setIsDropActive(false);
-      return;
-    }
-
     event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
     setIsDropActive(true);
   };
 
-  const onDragLeave = () => {
+  const onDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     setIsDropActive(false);
   };
 
@@ -479,8 +569,8 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
       {isEditMode ? (
         <NodeResizer
           isVisible={selected}
-          minWidth={260}
-          minHeight={220}
+          minWidth={340}
+          minHeight={280}
           handleStyle={{
             width: 10,
             height: 10,
@@ -521,7 +611,7 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
         </button>
       </header>
 
-      <section className={`${styles.body} ${mode === "edit" ? "nodrag nopan nowheel" : ""}`}>
+      <section className={`${styles.body} nopan ${mode === "edit" ? "nodrag nowheel" : ""}`} onWheel={onBodyWheel}>
         {mode === "edit" ? (
           <>
             <label className={styles.fieldLabel}>
@@ -549,6 +639,30 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
             </label>
 
             <label className={styles.fieldLabel}>
+              TTPs — MITRE ATT&CK IDs (comma separated)
+              <input
+                className={`${styles.textInput} nodrag`}
+                value={ttpsText}
+                onChange={onTtpsChange}
+                onPaste={onPaste}
+                placeholder="T1566.001, T1059.001"
+                aria-label="MITRE ATT&CK technique IDs"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              IOCs — Indicators of Compromise (comma separated)
+              <input
+                className={`${styles.textInput} nodrag`}
+                value={iocsText}
+                onChange={onIocsChange}
+                onPaste={onPaste}
+                placeholder="192.168.1.100, evil.com, d41d8cd98f..."
+                aria-label="Indicators of Compromise"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
               Severity
               <select
                 className={`${styles.selectInput} ${styles.severitySelect} ${severityClassName} nodrag`}
@@ -562,6 +676,48 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Confidence ({confidencePercent}%)
+              <input
+                className="nodrag"
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={confidencePercent}
+                onChange={onConfidenceChange}
+                aria-label="Confidence level"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Behavior (ATT&CK Tactic)
+              <select
+                className={`${styles.selectInput} nodrag`}
+                value={data.payload.behavior ?? ""}
+                onChange={onBehaviorChange}
+                aria-label="Threat behavior"
+              >
+                <option value="">— none —</option>
+                {BEHAVIOR_OPTIONS.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Observed at
+              <input
+                className={`${styles.textInput} nodrag`}
+                type="datetime-local"
+                value={data.payload.observedAt ?? ""}
+                onChange={onObservedAtChange}
+                aria-label="Observation timestamp"
+              />
             </label>
 
             <label className={styles.fieldLabel}>
@@ -603,7 +759,43 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
                   {highlightText(data.payload.severity, normalizedSearchTerm, isActiveSearchResult)}
                 </span>
               </span>
+
+              <span className={`${styles.metaChip} ${styles.confidenceChip}`}>
+                Confidence: {confidencePercent}%
+              </span>
+
+              {data.payload.behavior ? (
+                <span className={`${styles.metaChip} ${styles.behaviorChip}`}>
+                  {highlightText(data.payload.behavior, normalizedSearchTerm, isActiveSearchResult)}
+                </span>
+              ) : null}
             </div>
+
+            {data.payload.ttps.length > 0 ? (
+              <div className={`${styles.ttpsList} nodrag nopan`}>
+                {data.payload.ttps.map((ttp, i) => (
+                  <span key={`ttp-${i}`} className={styles.ttpChip}>
+                    {highlightText(ttp, normalizedSearchTerm, isActiveSearchResult)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {data.payload.iocs.length > 0 ? (
+              <div className={`${styles.iocsList} nodrag nopan`}>
+                {data.payload.iocs.map((ioc, i) => (
+                  <span key={`ioc-${i}`} className={styles.iocChip}>
+                    {highlightText(ioc, normalizedSearchTerm, isActiveSearchResult)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {data.payload.observedAt ? (
+              <div className={`${styles.observedAt} nodrag nopan`}>
+                Observed: {new Date(data.payload.observedAt).toLocaleString()}
+              </div>
+            ) : null}
 
             {snippetContent ? (
               <div className={`${styles.snippetBlock} nodrag nopan`}>
@@ -621,43 +813,54 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
         {isEditMode ? (
           <div className={`${styles.dropzone} nodrag ${isDropActive ? styles.dropzoneActive : ""}`}>
             {isUploading
-              ? "Saving evidence image..."
-              : "Drag and drop images here or focus this node and press Ctrl+V"}
+              ? "Saving evidence..."
+              : "Drop images or PDFs here, or Ctrl+V to paste"}
           </div>
         ) : null}
 
-        {imageUrls.length > 0 ? (
+        {evidenceItems.length > 0 ? (
           <div className={styles.imageGrid}>
-            {imageUrls.map((image) => (
-              <figure key={image.imageId} className={styles.imageCard}>
-                <button
-                  type="button"
-                  className={`${styles.imagePreviewButton} nodrag`}
-                  onClick={() => {
-                    if (!image.src) {
-                      return;
-                    }
+            {evidenceItems.map((item) => {
+              const isPdf = item.meta?.mimeType === PDF_MIME ||
+                item.meta?.fileName.toLowerCase().endsWith(".pdf");
 
-                    openImagePreview(image.src);
-                  }}
-                  aria-label="Open image preview"
-                >
-                  <img className={styles.image} src={image.src} alt="Evidence" />
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.removeImageButton} nodrag`}
-                  disabled={isBusy || isUploading}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void removeEvidenceFromNode({ nodeId: id, imageId: image.imageId });
-                  }}
-                  aria-label="Remove image"
-                >
-                  x
-                </button>
-              </figure>
-            ))}
+              return (
+                <figure key={item.imageId} className={styles.imageCard}>
+                  <button
+                    type="button"
+                    className={`${styles.imagePreviewButton} nodrag`}
+                    onClick={() => {
+                      if (!item.src) return;
+                      openImagePreview(item.src, item.meta?.mimeType);
+                    }}
+                    aria-label={isPdf ? "Open PDF preview" : "Open image preview"}
+                  >
+                    {isPdf ? (
+                      <div className={styles.pdfThumb}>
+                        <span className={styles.pdfIcon}>PDF</span>
+                        <span className={styles.pdfName}>
+                          {item.meta?.fileName ?? "document.pdf"}
+                        </span>
+                      </div>
+                    ) : (
+                      <img className={styles.image} src={item.src} alt="Evidence" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.removeImageButton} nodrag`}
+                    disabled={isBusy || isUploading}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void removeEvidenceFromNode({ nodeId: id, imageId: item.imageId });
+                    }}
+                    aria-label="Remove evidence"
+                  >
+                    x
+                  </button>
+                </figure>
+              );
+            })}
           </div>
         ) : null}
       </section>
@@ -674,4 +877,4 @@ export const EvidenceNode = ({ id, data, selected, width, height }: NodeProps<Th
       <Handle id="source-bottom" type="source" position={Position.Bottom} />
     </div>
   );
-};
+});

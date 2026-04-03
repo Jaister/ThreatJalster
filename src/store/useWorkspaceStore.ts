@@ -8,11 +8,13 @@ import {
   type XYPosition
 } from "@xyflow/react";
 import { create } from "zustand";
-import { loadProject, saveProject, toAssetUrl } from "../lib/tauri";
+import { deleteEvidenceFile, loadProject, saveProject, toAssetUrl } from "../lib/tauri";
 import type {
+  EdgeRelation,
   EvidenceImageMeta,
   NodeMode,
   Severity,
+  ThreatBehavior,
   ThreatEdge,
   ThreatNode,
   WorkspaceDocument
@@ -29,9 +31,14 @@ interface NodeTextUpdates {
   title?: string;
   markdown?: string;
   tags?: string[];
+  ttps?: string[];
+  iocs?: string[];
   snippetLanguage?: string;
   snippetContent?: string;
   severity?: Severity;
+  confidence?: number;
+  behavior?: ThreatBehavior;
+  observedAt?: string;
 }
 
 interface WorkspaceState {
@@ -40,12 +47,14 @@ interface WorkspaceState {
   evidence: Record<string, EvidenceImageMeta>;
   evidencePreviewData: Record<string, string>;
   openedImagePreviewSrc?: string;
+  openedImagePreviewMimeType?: string;
   searchTerm: string;
   activeSearchNodeId?: string;
   selectedNodeId?: string;
   investigationId: string;
   projectDir?: string;
   workspacePath?: string;
+  isDragOverCanvas: boolean;
   isBusy: boolean;
   error?: string;
   toasts: ToastMessage[];
@@ -54,7 +63,7 @@ interface WorkspaceState {
   onConnect: (connection: Connection) => void;
   deleteEdge: (edgeId: string) => void;
   addNode: (position?: XYPosition) => void;
-  deleteNode: (nodeId: string) => void;
+  deleteNode: (nodeId: string) => Promise<void>;
   deleteSelectedNode: () => void;
   setSelectedNodeId: (nodeId?: string) => void;
   setNodeMode: (nodeId: string, mode: NodeMode) => void;
@@ -69,13 +78,14 @@ interface WorkspaceState {
   removeEvidenceFromNode: (params: {
     nodeId: string;
     imageId: string;
-  }) => void;
-  openImagePreview: (src: string) => void;
+  }) => Promise<void>;
+  openImagePreview: (src: string, mimeType?: string) => void;
   closeImagePreview: () => void;
   setSearchTerm: (value: string) => void;
   setActiveSearchNodeId: (nodeId?: string) => void;
   enqueueToast: (text: string) => void;
   dismissToast: (toastId: string) => void;
+  setDragOverCanvas: (value: boolean) => void;
   setInvestigationId: (id: string) => void;
   saveWorkspace: () => Promise<void>;
   saveWorkspaceAs: () => Promise<void>;
@@ -112,9 +122,12 @@ const createNodePayload = (index: number) => ({
       language: "text",
       content: "Add command or log snippet here"
     },
-    evidenceImageIds: [],
+    evidenceImageIds: [] as string[],
     tags: ["new"],
-    severity: "medium" as const
+    ttps: [] as string[],
+    iocs: [] as string[],
+    severity: "medium" as const,
+    confidence: 0.5
   }
 });
 
@@ -147,8 +160,12 @@ const createDemoWorkspace = (): WorkspaceDocument => {
                 "Get-WinEvent -LogName Security | Where-Object { $_.Id -eq 4688 } | Select-Object -First 5"
             },
             evidenceImageIds: [],
-            tags: ["phishing", "initial-access"],
-            severity: "high"
+            tags: ["phishing"],
+            ttps: ["T1566.001", "T1059.001"],
+            iocs: [],
+            severity: "high",
+            confidence: 0.75,
+            behavior: "initial-access"
           }
         }
       }
@@ -162,15 +179,37 @@ const normalizeNode = (node: ThreatNode): ThreatNode => {
   const normalizedType = node.type === "intelNode" ? "evidenceNode" : node.type;
   const mode = node.data.mode === "edit" ? "edit" : "view";
 
+  const payload = node.data.payload;
+
   return {
     ...node,
     type: normalizedType,
     draggable: mode !== "edit",
     data: {
       ...node.data,
-      mode
+      mode,
+      payload: {
+        ...payload,
+        tags: Array.isArray(payload.tags) ? payload.tags : [],
+        ttps: Array.isArray(payload.ttps) ? payload.ttps : [],
+        iocs: Array.isArray(payload.iocs) ? payload.iocs : [],
+        evidenceImageIds: Array.isArray(payload.evidenceImageIds) ? payload.evidenceImageIds : [],
+        severity: payload.severity ?? "medium",
+        confidence: typeof payload.confidence === "number" ? payload.confidence : 0.5
+      }
     }
   };
+};
+
+const VALID_EDGE_RELATIONS = new Set<string>([
+  "enables", "lateral-to", "escalates", "exfiltrates", "persists", "c2-channel", "related"
+]);
+
+const normalizeEdgeRelation = (raw: unknown): "related" | string => {
+  if (typeof raw === "string" && VALID_EDGE_RELATIONS.has(raw)) {
+    return raw;
+  }
+  return "related";
 };
 
 const buildEvidencePreviews = (
@@ -222,6 +261,14 @@ const normalizeWorkspace = (workspace: WorkspaceDocument): WorkspaceDocument => 
     };
   }
 
+  const rawEdges = Array.isArray(workspace.edges) ? (workspace.edges as ThreatEdge[]) : [];
+  const normalizedEdges: ThreatEdge[] = rawEdges.map((edge) => {
+    const d = edge.data;
+    const relation = normalizeEdgeRelation(d?.relation) as EdgeRelation;
+    const confidence = typeof d?.confidence === "number" ? d.confidence : 0.5;
+    return { ...edge, data: { ...d, relation, confidence } };
+  });
+
   return {
     version: typeof workspace.version === "number" ? workspace.version : 1,
     meta: {
@@ -245,7 +292,7 @@ const normalizeWorkspace = (workspace: WorkspaceDocument): WorkspaceDocument => 
     nodes: Array.isArray(workspace.nodes)
       ? workspace.nodes.map((node) => normalizeNode(node as ThreatNode))
       : [],
-    edges: Array.isArray(workspace.edges) ? (workspace.edges as ThreatEdge[]) : [],
+    edges: normalizedEdges,
     evidence
   };
 };
@@ -261,9 +308,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   evidence: demo.evidence,
   evidencePreviewData: {},
   openedImagePreviewSrc: undefined,
+  openedImagePreviewMimeType: undefined,
   searchTerm: "",
   activeSearchNodeId: undefined,
   selectedNodeId: demo.nodes[0]?.id,
+  isDragOverCanvas: false,
   isBusy: false,
   error: undefined,
   toasts: [],
@@ -297,7 +346,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           id: crypto.randomUUID(),
           type: "straight",
           data: {
-            relation: "related",
+            relation: "related" as EdgeRelation,
             confidence: 0.65
           }
         },
@@ -354,7 +403,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               target: nodeId,
               type: "straight",
               data: {
-                relation: "expands",
+                relation: "enables" as EdgeRelation,
                 confidence: 0.5
               }
             }
@@ -369,35 +418,59 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  deleteNode: (nodeId) => {
-    set((state) => {
-      const targetNode = state.nodes.find((node) => node.id === nodeId);
-      if (!targetNode) {
-        return state;
+  deleteNode: async (nodeId) => {
+    const state = get();
+    const targetNode = state.nodes.find((node) => node.id === nodeId);
+    if (!targetNode) {
+      return;
+    }
+
+    const imageIds = targetNode.data.payload.evidenceImageIds;
+
+    if (imageIds.length > 0) {
+      const confirmed = globalThis.confirm(
+        `This will permanently delete ${imageIds.length} evidence file(s) from disk. Continue?`
+      );
+      if (!confirmed) {
+        return;
       }
 
-      const removedImageIds = new Set(targetNode.data.payload.evidenceImageIds);
-      const removedPreviewSources = new Set(
-        targetNode.data.payload.evidenceImageIds
-          .map((imageId) => state.evidencePreviewData[imageId])
-          .filter((src): src is string => Boolean(src))
-      );
+      for (const imgId of imageIds) {
+        const meta = state.evidence[imgId];
+        if (meta?.storagePath) {
+          try {
+            await deleteEvidenceFile(meta.storagePath);
+          } catch (err) {
+            console.warn("[deleteNode] failed to delete evidence file:", err);
+          }
+        }
+      }
+    }
 
-      const remainingNodes = state.nodes.filter((node) => node.id !== nodeId);
-      const remainingEdges = state.edges.filter(
+    const removedImageIds = new Set(imageIds);
+    const removedPreviewSources = new Set(
+      imageIds
+        .map((imgId) => state.evidencePreviewData[imgId])
+        .filter((src): src is string => Boolean(src))
+    );
+
+    set((prev) => {
+      const remainingNodes = prev.nodes.filter((node) => node.id !== nodeId);
+      const remainingEdges = prev.edges.filter(
         (edge) => edge.source !== nodeId && edge.target !== nodeId
       );
       const remainingEvidence = Object.fromEntries(
-        Object.entries(state.evidence).filter(([imageId]) => !removedImageIds.has(imageId))
+        Object.entries(prev.evidence).filter(([id]) => !removedImageIds.has(id))
       );
       const remainingPreviewData = Object.fromEntries(
-        Object.entries(state.evidencePreviewData).filter(([imageId]) => !removedImageIds.has(imageId))
+        Object.entries(prev.evidencePreviewData).filter(([id]) => !removedImageIds.has(id))
       );
 
       const nextSelectedNodeId =
-        state.selectedNodeId === nodeId ? remainingNodes[0]?.id : state.selectedNodeId;
+        prev.selectedNodeId === nodeId ? remainingNodes[0]?.id : prev.selectedNodeId;
       const shouldClosePreview =
-        Boolean(state.openedImagePreviewSrc) && removedPreviewSources.has(state.openedImagePreviewSrc as string);
+        Boolean(prev.openedImagePreviewSrc) &&
+        removedPreviewSources.has(prev.openedImagePreviewSrc as string);
 
       return {
         nodes: remainingNodes,
@@ -406,12 +479,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         evidencePreviewData: remainingPreviewData,
         selectedNodeId: nextSelectedNodeId,
         activeSearchNodeId:
-          state.activeSearchNodeId === nodeId ? undefined : state.activeSearchNodeId,
-        openedImagePreviewSrc: shouldClosePreview ? undefined : state.openedImagePreviewSrc
+          prev.activeSearchNodeId === nodeId ? undefined : prev.activeSearchNodeId,
+        openedImagePreviewSrc: shouldClosePreview ? undefined : prev.openedImagePreviewSrc,
+        openedImagePreviewMimeType:
+          shouldClosePreview ? undefined : prev.openedImagePreviewMimeType
       };
     });
 
-    get().enqueueToast("Node deleted. Evidence files remain on disk for now.");
+    get().enqueueToast("Node and evidence files deleted.");
   },
 
   deleteSelectedNode: () => {
@@ -420,7 +495,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    get().deleteNode(selectedNodeId);
+    void get().deleteNode(selectedNodeId);
   },
 
   setSelectedNodeId: (nodeId) => {
@@ -469,7 +544,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               ...node.data.payload,
               markdown: updates.markdown ?? node.data.payload.markdown,
               tags: updates.tags ?? node.data.payload.tags,
+              ttps: updates.ttps ?? node.data.payload.ttps,
+              iocs: updates.iocs ?? node.data.payload.iocs,
               severity: updates.severity ?? node.data.payload.severity,
+              confidence: updates.confidence ?? node.data.payload.confidence,
+              behavior: updates.behavior !== undefined ? updates.behavior : node.data.payload.behavior,
+              observedAt: updates.observedAt !== undefined ? updates.observedAt : node.data.payload.observedAt,
               snippet: {
                 language: updates.snippetLanguage ?? existingSnippet.language,
                 content: updates.snippetContent ?? existingSnippet.content
@@ -523,19 +603,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  removeEvidenceFromNode: ({ nodeId, imageId }) => {
-    set((state) => {
+  removeEvidenceFromNode: async ({ nodeId, imageId }) => {
+    const state = get();
+    const meta = state.evidence[imageId];
+
+    if (meta?.storagePath) {
+      const confirmed = globalThis.confirm("Delete this evidence file from disk?");
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        await deleteEvidenceFile(meta.storagePath);
+      } catch (err) {
+        console.warn("[removeEvidence] failed to delete from disk:", err);
+      }
+    }
+
+    set((prev) => {
       const remainingEvidence = Object.fromEntries(
-        Object.entries(state.evidence).filter(([id]) => id !== imageId)
+        Object.entries(prev.evidence).filter(([id]) => id !== imageId)
       );
       const remainingPreviews = Object.fromEntries(
-        Object.entries(state.evidencePreviewData).filter(([id]) => id !== imageId)
+        Object.entries(prev.evidencePreviewData).filter(([id]) => id !== imageId)
       );
 
       return {
         evidence: remainingEvidence,
         evidencePreviewData: remainingPreviews,
-        nodes: state.nodes.map((node) => {
+        nodes: prev.nodes.map((node) => {
           if (node.id !== nodeId) {
             return node;
           }
@@ -554,14 +650,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         })
       };
     });
+
+    get().enqueueToast("Evidence file deleted.");
   },
 
-  openImagePreview: (src) => {
-    set({ openedImagePreviewSrc: src });
+  openImagePreview: (src, mimeType) => {
+    set({ openedImagePreviewSrc: src, openedImagePreviewMimeType: mimeType });
   },
 
   closeImagePreview: () => {
-    set({ openedImagePreviewSrc: undefined });
+    set({ openedImagePreviewSrc: undefined, openedImagePreviewMimeType: undefined });
   },
 
   setSearchTerm: (value) => {
@@ -588,6 +686,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => ({
       toasts: state.toasts.filter((toast) => toast.id !== toastId)
     }));
+  },
+
+  setDragOverCanvas: (value) => {
+    set({ isDragOverCanvas: value });
   },
 
   setInvestigationId: (id) => {
@@ -665,6 +767,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         evidence: workspace.evidence,
         evidencePreviewData: buildEvidencePreviews(workspace.evidence),
         openedImagePreviewSrc: undefined,
+        openedImagePreviewMimeType: undefined,
         searchTerm: "",
         activeSearchNodeId: undefined,
         selectedNodeId: workspace.nodes[0]?.id,

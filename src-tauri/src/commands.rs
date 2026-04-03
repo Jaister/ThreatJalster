@@ -363,6 +363,68 @@ pub async fn load_project(app: AppHandle) -> Result<LoadProjectResponse, String>
 }
 
 #[tauri::command]
+pub fn copy_evidence_file(
+    app: AppHandle,
+    source_path: String,
+    original_name: String,
+) -> Result<String, String> {
+    let source = PathBuf::from(&source_path);
+    eprintln!(
+        "[evidence:copy] source={}, name={}",
+        source.display(),
+        original_name
+    );
+
+    if !source.exists() {
+        return Err("source file does not exist".to_string());
+    }
+
+    let metadata = fs::metadata(&source)
+        .map_err(|e| format!("cannot read source file metadata: {e}"))?;
+
+    if metadata.len() > MAX_IMAGE_BYTES as u64 {
+        return Err("source file exceeds maximum size".to_string());
+    }
+
+    let file_name = format!(
+        "{}_{}.{}",
+        Uuid::new_v4(),
+        sanitize_stem(&original_name),
+        sanitize_extension(&original_name)
+    );
+    let dest_path = evidence_root(&app)?.join(file_name);
+    eprintln!("[evidence:copy] dest={}", dest_path.display());
+
+    fs::copy(&source, &dest_path).map_err(|e| format!("copy failed: {e}"))?;
+    eprintln!("[evidence:copy] ok, exists={}", dest_path.exists());
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn delete_evidence_file(app: AppHandle, storage_path: String) -> Result<(), String> {
+    let file_path = PathBuf::from(&storage_path);
+    let root = evidence_root(&app)?;
+
+    let canonical = fs::canonicalize(&file_path)
+        .map_err(|e| format!("cannot resolve evidence path: {e}"))?;
+    let canonical_root = fs::canonicalize(&root)
+        .map_err(|e| format!("cannot resolve evidence root: {e}"))?;
+
+    if !canonical.starts_with(&canonical_root) {
+        return Err("path is outside evidence directory".to_string());
+    }
+
+    if file_path.exists() {
+        fs::remove_file(&file_path)
+            .map_err(|e| format!("cannot delete evidence file: {e}"))?;
+        eprintln!("[evidence:delete] removed {}", file_path.display());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn read_clipboard_image(app: AppHandle) -> Result<Option<String>, String> {
     eprintln!("[evidence:clipboard] opening system clipboard");
     let mut clipboard =

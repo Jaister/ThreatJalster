@@ -15,7 +15,10 @@ const getSearchableNodeText = (node: ThreatNode): string => {
     node.data.title,
     node.data.payload.markdown,
     node.data.payload.tags.join(" "),
+    node.data.payload.ttps.join(" "),
+    node.data.payload.iocs.join(" "),
     node.data.payload.severity,
+    node.data.payload.behavior ?? "",
     snippet?.language ?? "",
     snippet?.content ?? ""
   ].join("\n");
